@@ -15,10 +15,40 @@ Just open the link in your browser - no installation needed! Mobile touch contro
 - **Arrow Keys / WASD / Mobile Touch** - Move your character
 - Pick up OKRs (glowing boxes) by walking over them
 - Deliver them to Jrod at HQ
+- **Collect power-ups** (glowing circles) for special abilities
 - Watch your Token count - lower is better!
 - Dodge obstacles and enemy types
 - **Q** - Cash out and end your run
 - Survive longer and deliver more to increase your stats progression (speed & capacity)
+
+## Power-Ups ✨
+
+Team Dominos features an amazing power-up system with 8 unique abilities:
+
+### Common (Green) 🟢
+- **Sprint Boost (S)** - 2x speed for 5 seconds
+- **OKR Magnet (M)** - Auto-collect OKRs from far away for 10 seconds
+
+### Rare (Blue) 🔵
+- **Agile Shield (A)** - Phase through obstacles for 3 seconds
+- **Ghost Mode (G)** - Walk through everything for 7 seconds
+- **Dash Charge (⚡)** - Unlimited sprint for 10 seconds
+
+### Epic (Purple) 🟣
+- **Standup Skip (T)** - Instant random teleportation
+- **Time Freeze (⏸)** - Freeze all enemies for 5 seconds
+
+### Legendary (Gold) 🟡
+- **2x Multiplier (×)** - Double OKR delivery value for 15 seconds
+
+**Features:**
+- Gorgeous visual effects with glowing auras and particle trails
+- Rarity-based spawn rates (Common 60%, Rare 30%, Epic 8%, Legendary 2%)
+- Power-ups can stack for incredible combos!
+- Active effects shown in UI panel with countdown timers
+- Satisfying sound effects and pickup animations
+
+*See [POWERUP_REFERENCE.md](POWERUP_REFERENCE.md) for detailed power-up guide and strategies.*
 
 ## Characters
 
