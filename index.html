@@ -179,6 +179,7 @@ let particles = [];
 let activePowerups = {};
 let shakeTimer = 0;
 let shakeIntensity = 0;
+let scopeCreepCooldown = 0;
 let quoteTimer = 0;
 let keys = {};
 let mobileDir = { x:0, y:0 };
@@ -200,8 +201,19 @@ resize();
 // ============================================================
 // INPUT
 // ============================================================
-window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; e.preventDefault(); });
-window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+window.addEventListener('keydown', e => {
+  const tag = document.activeElement.tagName;
+  if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
+    keys[e.key.toLowerCase()] = true;
+    e.preventDefault();
+  }
+});
+window.addEventListener('keyup', e => {
+  const tag = document.activeElement.tagName;
+  if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
+    keys[e.key.toLowerCase()] = false;
+  }
+});
 
 // Mobile controls
 ['btn-up','btn-down','btn-left','btn-right'].forEach(id => {
@@ -342,21 +354,36 @@ function generateMap(level) {
 // ============================================================
 // SPAWN OKRs AND POWERUPS
 // ============================================================
+function findAdjacentRoad(tx, ty) {
+  // Search for nearest road tile (type 0) adjacent to the given tile
+  const dirs = [[0,-1],[0,1],[-1,0],[1,0],[-1,-1],[1,-1],[-1,1],[1,1]];
+  for(let d of dirs) {
+    const nx = tx+d[0], ny = ty+d[1];
+    if(nx>=0 && nx<mapData.w && ny>=0 && ny<mapData.h && mapData.grid[ny][nx]===0) {
+      return {x:nx, y:ny};
+    }
+  }
+  return null; // no adjacent road found
+}
+
 function spawnOKRs(level) {
   okrs = [];
   const count = 3 + level * 2;
   requiredDeliveries = count;
   deliveredOKRs = 0;
 
-  // Find office tiles
-  const offices = [];
+  // Find office tiles and resolve them to adjacent road tiles
+  const officeRoads = [];
   for(let y=0; y<mapData.h; y++) {
     for(let x=0; x<mapData.w; x++) {
-      if(mapData.grid[y][x]===7) offices.push({x,y});
+      if(mapData.grid[y][x]===7) {
+        const adj = findAdjacentRoad(x, y);
+        if(adj) officeRoads.push(adj);
+      }
     }
   }
 
-  // Also allow road tiles if not enough offices
+  // Also allow road tiles if not enough office-adjacent roads
   const roads = [];
   for(let y=0; y<mapData.h; y++) {
     for(let x=0; x<mapData.w; x++) {
@@ -364,12 +391,13 @@ function spawnOKRs(level) {
     }
   }
 
-  const spawnTiles = offices.length >= count ? offices : [...offices, ...roads];
+  const spawnTiles = officeRoads.length >= count ? officeRoads : [...officeRoads, ...roads];
 
   for(let i=0; i<count; i++) {
     const idx = Math.floor(Math.random()*spawnTiles.length);
     const t = spawnTiles[idx];
     okrs.push({ x:t.x*TILE+TILE/2, y:t.y*TILE+TILE/2, collected:false, bobPhase:Math.random()*Math.PI*2 });
+    spawnTiles.splice(idx, 1); // BUG 4 FIX: remove used tile to prevent duplicates
   }
 }
 
@@ -694,6 +722,7 @@ function initLevel(level) {
   particles = [];
   carriedOKRs = 0;
   activePowerups = {};
+  scopeCreepCooldown = 0;
 
   player = {
     x: mapData.startX * TILE + TILE/2,
@@ -873,13 +902,14 @@ function update(dt) {
     } else { e.vx=-e.vx; e.vy=-e.vy; }
     e.phase += dt * 2;
 
-    // Collision with player
-    if(!activePowerups.shield) {
+    // Collision with player (with cooldown to prevent stacking)
+    if(!activePowerups.shield && scopeCreepCooldown <= 0) {
       const dist = Math.hypot(player.x-e.x, player.y-e.y);
       if(dist < TILE*0.7) {
         requiredDeliveries++;
         shakeTimer = 0.3;
         shakeIntensity = 6;
+        scopeCreepCooldown = 1.0; // 1 second invincibility after hit
         spawnParticles(player.x, player.y, 20, '#FF0000', 120, 0.4);
         showQuote('Scope Creep! +1 OKR required!');
         // Push enemy away
@@ -903,6 +933,9 @@ function update(dt) {
 
   // Shake
   if(shakeTimer > 0) shakeTimer -= dt;
+
+  // Scope Creep cooldown
+  if(scopeCreepCooldown > 0) scopeCreepCooldown -= dt;
 
   // Quote popup
   if(quoteTimer > 0) {
