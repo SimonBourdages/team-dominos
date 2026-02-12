@@ -1,0 +1,1430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Team Dominos - Delivering OKRs Since 2024</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#1a1a2e;overflow:hidden;font-family:'Courier New',monospace;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;width:100vw;}
+canvas{display:block;image-rendering:pixelated;}
+#ui-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;}
+#ui-overlay *{pointer-events:auto;}
+#hud{position:absolute;top:0;left:0;width:100%;display:flex;justify-content:space-between;align-items:center;padding:8px 16px;background:linear-gradient(180deg,rgba(0,0,0,0.8) 0%,rgba(0,0,0,0) 100%);font-size:14px;z-index:20;}
+.hud-item{display:flex;align-items:center;gap:6px;background:rgba(0,0,0,0.5);padding:4px 10px;border-radius:4px;border:1px solid rgba(255,255,255,0.15);}
+.hud-label{color:#aaa;font-size:11px;text-transform:uppercase;}
+.hud-value{color:#fff;font-weight:bold;font-size:15px;}
+.hud-value.tokens{color:#E21A2C;}
+.hud-value.okrs{color:#FFD700;}
+.hud-value.level{color:#006491;}
+#minimap-container{position:absolute;bottom:12px;right:12px;border:2px solid rgba(255,255,255,0.3);border-radius:4px;overflow:hidden;z-index:20;background:rgba(0,0,0,0.6);}
+#quote-popup{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:linear-gradient(135deg,#E21A2C,#b5151f);color:#fff;padding:16px 28px;border-radius:12px;font-size:18px;font-weight:bold;text-align:center;opacity:0;transition:opacity 0.3s;pointer-events:none;z-index:30;border:3px solid #FFD700;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.5);}
+#mobile-controls{position:absolute;bottom:20px;left:20px;z-index:25;display:none;}
+@media(pointer:coarse){#mobile-controls{display:block;}}
+.dpad-btn{position:absolute;width:52px;height:52px;background:rgba(255,255,255,0.2);border:2px solid rgba(255,255,255,0.4);border-radius:10px;display:flex;justify-content:center;align-items:center;font-size:22px;color:#fff;user-select:none;-webkit-user-select:none;touch-action:manipulation;}
+.dpad-btn:active{background:rgba(255,255,255,0.45);}
+#btn-up{left:56px;top:0;}
+#btn-down{left:56px;top:112px;}
+#btn-left{left:0;top:56px;}
+#btn-right{left:112px;top:56px;}
+#screen-overlay{position:absolute;top:0;left:0;width:100%;height:100%;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.screen-bg{background:radial-gradient(ellipse at center,#1a1a2e 0%,#0d0d1a 100%);}
+.title-logo{font-size:clamp(36px,8vw,72px);font-weight:bold;color:#E21A2C;text-shadow:3px 3px 0 #006491,6px 6px 0 rgba(0,0,0,0.3);margin-bottom:4px;letter-spacing:2px;}
+.title-sub{color:#FFD700;font-size:clamp(12px,2.5vw,18px);margin-bottom:40px;letter-spacing:4px;}
+.menu-btn{background:linear-gradient(135deg,#E21A2C,#b5151f);color:#fff;border:none;padding:14px 40px;font-size:18px;font-family:'Courier New',monospace;font-weight:bold;cursor:pointer;border-radius:8px;margin:8px;min-width:220px;transition:transform 0.1s,box-shadow 0.1s;box-shadow:0 4px 15px rgba(226,26,44,0.4);}
+.menu-btn:hover{transform:scale(1.05);box-shadow:0 6px 20px rgba(226,26,44,0.6);}
+.menu-btn.secondary{background:linear-gradient(135deg,#006491,#004a6e);}
+.char-grid{display:flex;flex-wrap:wrap;justify-content:center;gap:16px;max-width:750px;margin:20px 0;}
+.char-card{background:rgba(255,255,255,0.08);border:2px solid rgba(255,255,255,0.15);border-radius:12px;padding:16px;width:200px;cursor:pointer;transition:all 0.2s;text-align:center;}
+.char-card:hover{border-color:#E21A2C;background:rgba(226,26,44,0.15);transform:translateY(-3px);}
+.char-card.selected{border-color:#FFD700;background:rgba(255,215,0,0.15);}
+.char-name{font-size:16px;font-weight:bold;margin:8px 0 4px;}
+.char-desc{font-size:11px;color:#aaa;margin-bottom:8px;}
+.char-stat{display:flex;justify-content:space-between;font-size:12px;margin:2px 0;}
+.stat-bar{height:6px;background:rgba(255,255,255,0.1);border-radius:3px;flex:1;margin-left:8px;overflow:hidden;}
+.stat-fill{height:100%;border-radius:3px;}
+.stat-fill.speed{background:#00cc66;}
+.stat-fill.capacity{background:#FFD700;}
+.back-btn{position:absolute;top:16px;left:16px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;padding:8px 16px;font-family:'Courier New',monospace;font-size:13px;cursor:pointer;border-radius:6px;}
+.back-btn:hover{background:rgba(255,255,255,0.2);}
+.leaderboard-table{background:rgba(0,0,0,0.4);border-radius:8px;padding:16px;max-width:500px;width:90%;max-height:400px;overflow-y:auto;}
+.lb-row{display:flex;justify-content:space-between;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.1);font-size:13px;}
+.lb-row.header{color:#FFD700;font-weight:bold;border-bottom:2px solid rgba(255,215,0,0.3);}
+.level-complete-box{background:rgba(0,0,0,0.85);border:3px solid #FFD700;border-radius:16px;padding:32px;text-align:center;max-width:420px;}
+.lc-title{font-size:28px;color:#FFD700;margin-bottom:8px;}
+.lc-stat{font-size:15px;margin:4px 0;color:#ccc;}
+.lc-quote{font-size:16px;color:#E21A2C;font-style:italic;margin:16px 0;padding:12px;background:rgba(226,26,44,0.1);border-radius:8px;}
+.name-input{background:rgba(255,255,255,0.1);border:2px solid rgba(255,255,255,0.3);color:#fff;padding:10px 16px;font-size:16px;font-family:'Courier New',monospace;border-radius:8px;text-align:center;width:250px;margin:8px 0;}
+.name-input:focus{outline:none;border-color:#FFD700;}
+.share-text{background:rgba(0,0,0,0.5);padding:12px;border-radius:8px;font-size:11px;white-space:pre;text-align:left;max-width:350px;margin:8px auto;border:1px solid rgba(255,255,255,0.15);}
+.copied-msg{color:#00cc66;font-size:13px;margin-top:4px;}
+</style>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+<div id="ui-overlay">
+  <div id="hud" style="display:none;">
+    <div class="hud-item"><span class="hud-label">Tokens</span><span class="hud-value tokens" id="hud-tokens">0</span></div>
+    <div class="hud-item"><span class="hud-label">OKRs</span><span class="hud-value okrs" id="hud-okrs">0/0</span></div>
+    <div class="hud-item"><span class="hud-label">Level</span><span class="hud-value level" id="hud-level">1</span></div>
+    <div class="hud-item"><span class="hud-label">Time</span><span class="hud-value" id="hud-time">0:00</span></div>
+    <div class="hud-item"><span class="hud-label">Deliver</span><span class="hud-value" id="hud-goal" style="color:#00cc66;">0/0</span></div>
+  </div>
+  <div id="minimap-container" style="display:none;"><canvas id="minimap-canvas" width="140" height="140"></canvas></div>
+  <div id="quote-popup"></div>
+  <div id="mobile-controls">
+    <div class="dpad-btn" id="btn-up">^</div>
+    <div class="dpad-btn" id="btn-down">v</div>
+    <div class="dpad-btn" id="btn-left">&lt;</div>
+    <div class="dpad-btn" id="btn-right">&gt;</div>
+  </div>
+  <div id="screen-overlay" class="screen-bg"></div>
+</div>
+
+<script>
+// ============================================================
+// TEAM DOMINOS - Complete Game
+// ============================================================
+
+const canvas = document.getElementById('game-canvas');
+const ctx = canvas.getContext('2d');
+const minimapCanvas = document.getElementById('minimap-canvas');
+const minimapCtx = minimapCanvas.getContext('2d');
+const overlay = document.getElementById('screen-overlay');
+const hud = document.getElementById('hud');
+const minimapContainer = document.getElementById('minimap-container');
+const quotePopup = document.getElementById('quote-popup');
+
+// ============================================================
+// CONSTANTS
+// ============================================================
+const TILE = 32;
+const FPS = 60;
+const TOKEN_PER_SEC = 1;
+const TOKEN_PER_MOVE = 0.1;
+const TOKEN_PER_PICKUP = 5;
+const TOKEN_PER_DELIVERY = 2;
+
+const COLORS = {
+  red: '#E21A2C',
+  blue: '#006491',
+  gold: '#FFD700',
+  white: '#FFFFFF',
+  road: '#3a3a4a',
+  sidewalk: '#5a5a6a',
+  grass: '#2d5a1e',
+  building: '#4a4a5e',
+  buildingTop: '#5a5a70',
+  hq: '#E21A2C',
+  meeting: '#8B4513',
+  techDebt: '#4a0e4a',
+  scopeCreep: '#1a4a1a'
+};
+
+// Jrod quotes on delivery
+const JROD_QUOTES = [
+  "These OKRs are hot and fresh!",
+  "Key Results? More like Key Delicious!",
+  "That's what I call delivering value!",
+  "OKRs delivered on time? That's a first!",
+  "Alignment achieved! Ship it!",
+  "Now THAT'S velocity!",
+  "You're crushing Q4 targets!",
+  "This sprint is *chef's kiss*!",
+  "Stakeholders are gonna LOVE this!",
+  "Promoted! Just kidding. But great work!",
+  "That delivery was O-K-ARRR-some!",
+  "30 minutes or less, guaranteed!",
+  "Exceeds expectations on the perf review!"
+];
+
+// Characters data
+const CHARACTERS = [
+  { id:'sally', name:'Sprint Sally', desc:'Fast but carries fewer OKRs', speed:5, capacity:2, color:'#FF69B4', hair:'#FFD700' },
+  { id:'bob', name:'Backlog Bob', desc:'Slow but carries many OKRs', speed:2, capacity:5, color:'#4169E1', hair:'#8B4513' },
+  { id:'alex', name:'Agile Alex', desc:'Perfectly balanced stats', speed:3, capacity:3, color:'#32CD32', hair:'#333' },
+  { id:'sam', name:'Scrum Sam', desc:'Good speed, medium capacity', speed:4, capacity:3, color:'#FF8C00', hair:'#D2691E' },
+  { id:'dana', name:'Deploy Dana', desc:'Medium speed, good capacity', speed:3, capacity:4, color:'#9370DB', hair:'#1a1a1a' },
+  { id:'steve', name:'Standup Steve', desc:'Lightning fast, minimal carry', speed:5, capacity:1, color:'#00CED1', hair:'#FFD700' }
+];
+
+// Power-up types
+const POWERUP_TYPES = [
+  { id:'sprint', name:'Sprint Planning Boost', color:'#00FF00', icon:'S', duration:5000, desc:'2x speed for 5s' },
+  { id:'shield', name:'Agile Shield', color:'#00BFFF', icon:'A', duration:3000, desc:'Pass through obstacles for 3s' },
+  { id:'teleport', name:'Standup Skip', color:'#FF00FF', icon:'T', duration:0, desc:'Teleport randomly' }
+];
+
+// ============================================================
+// GAME STATE
+// ============================================================
+let gameState = 'title'; // title, charSelect, playing, levelComplete, gameOver, leaderboard
+let selectedChar = null;
+let playerName = '';
+let player = null;
+let camera = { x:0, y:0 };
+let tokens = 0;
+let carriedOKRs = 0;
+let deliveredOKRs = 0;
+let totalDelivered = 0;
+let requiredDeliveries = 0;
+let currentLevel = 1;
+let elapsedTime = 0;
+let lastTime = 0;
+let mapData = null;
+let okrs = [];
+let powerups = [];
+let enemies = [];
+let particles = [];
+let activePowerups = {};
+let shakeTimer = 0;
+let shakeIntensity = 0;
+let quoteTimer = 0;
+let keys = {};
+let mobileDir = { x:0, y:0 };
+let canvasWidth, canvasHeight;
+let gameRunning = false;
+
+// ============================================================
+// RESIZE
+// ============================================================
+function resize() {
+  canvasWidth = window.innerWidth;
+  canvasHeight = window.innerHeight;
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ============================================================
+// INPUT
+// ============================================================
+window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; e.preventDefault(); });
+window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+// Mobile controls
+['btn-up','btn-down','btn-left','btn-right'].forEach(id => {
+  const el = document.getElementById(id);
+  const dir = id.split('-')[1];
+  const setDir = (active) => {
+    if(dir==='up') mobileDir.y = active ? -1 : 0;
+    if(dir==='down') mobileDir.y = active ? 1 : 0;
+    if(dir==='left') mobileDir.x = active ? -1 : 0;
+    if(dir==='right') mobileDir.x = active ? 1 : 0;
+  };
+  el.addEventListener('touchstart', e => { e.preventDefault(); setDir(true); });
+  el.addEventListener('touchend', e => { e.preventDefault(); setDir(false); });
+  el.addEventListener('mousedown', e => { setDir(true); });
+  el.addEventListener('mouseup', e => { setDir(false); });
+});
+
+// ============================================================
+// MAP GENERATION
+// ============================================================
+// Tile types: 0=road, 1=sidewalk, 2=grass, 3=building, 4=hq, 5=meeting, 6=techDebt, 7=office(OKR spawn)
+function generateMap(level) {
+  const w = 30 + level * 5;
+  const h = 30 + level * 5;
+  const grid = [];
+
+  // Fill with grass
+  for(let y=0; y<h; y++) {
+    grid[y] = [];
+    for(let x=0; x<w; x++) grid[y][x] = 2;
+  }
+
+  // Lay down roads in a grid pattern
+  const roadSpacingX = 7 + Math.floor(Math.random()*2);
+  const roadSpacingY = 7 + Math.floor(Math.random()*2);
+
+  for(let y=0; y<h; y++) {
+    for(let x=0; x<w; x++) {
+      if(x % roadSpacingX < 2 || y % roadSpacingY < 2) grid[y][x] = 0;
+    }
+  }
+
+  // Add sidewalks next to roads
+  for(let y=0; y<h; y++) {
+    for(let x=0; x<w; x++) {
+      if(grid[y][x] === 2) {
+        let adjRoad = false;
+        if(x>0 && grid[y][x-1]===0) adjRoad = true;
+        if(x<w-1 && grid[y][x+1]===0) adjRoad = true;
+        if(y>0 && grid[y-1][x]===0) adjRoad = true;
+        if(y<h-1 && grid[y+1][x]===0) adjRoad = true;
+        if(adjRoad) grid[y][x] = 1;
+      }
+    }
+  }
+
+  // Place buildings in grass areas (contiguous blocks)
+  const buildings = [];
+  for(let by=3; by<h-5; by+=roadSpacingY) {
+    for(let bx=3; bx<w-5; bx+=roadSpacingX) {
+      const bw = 2 + Math.floor(Math.random()*2);
+      const bh = 2 + Math.floor(Math.random()*2);
+      let canPlace = true;
+      for(let dy=0; dy<bh; dy++) {
+        for(let dx=0; dx<bw; dx++) {
+          const ty=by+dy, tx=bx+dx;
+          if(ty>=h||tx>=w||grid[ty][tx]!==2&&grid[ty][tx]!==1) canPlace=false;
+        }
+      }
+      if(canPlace) {
+        const isOffice = Math.random() < 0.5;
+        for(let dy=0; dy<bh; dy++) {
+          for(let dx=0; dx<bw; dx++) {
+            grid[by+dy][bx+dx] = isOffice ? 7 : 3;
+          }
+        }
+        buildings.push({ x:bx, y:by, w:bw, h:bh, isOffice });
+      }
+    }
+  }
+
+  // Place HQ near center
+  const hqX = Math.floor(w/2);
+  const hqY = Math.floor(h/2);
+  for(let dy=-1; dy<=1; dy++) {
+    for(let dx=-1; dx<=1; dx++) {
+      if(hqY+dy>=0&&hqY+dy<h&&hqX+dx>=0&&hqX+dx<w) grid[hqY+dy][hqX+dx] = 4;
+    }
+  }
+  // Clear road access around HQ
+  for(let dy=-2; dy<=2; dy++) {
+    for(let dx=-2; dx<=2; dx++) {
+      const ty=hqY+dy, tx=hqX+dx;
+      if(ty>=0&&ty<h&&tx>=0&&tx<w&&grid[ty][tx]!==4) grid[ty][tx]=0;
+    }
+  }
+
+  // Place meeting blockers
+  const meetingCount = 3 + level * 2;
+  for(let i=0; i<meetingCount; i++) {
+    let mx, my, tries=0;
+    do {
+      mx = Math.floor(Math.random()*w);
+      my = Math.floor(Math.random()*h);
+      tries++;
+    } while(tries<100 && (grid[my][mx]!==0 || (Math.abs(mx-hqX)<4&&Math.abs(my-hqY)<4)));
+    if(tries<100) grid[my][mx] = 5;
+  }
+
+  // Place tech debt zones
+  const debtCount = 2 + level;
+  for(let i=0; i<debtCount; i++) {
+    let dx2, dy2, tries=0;
+    do {
+      dx2 = Math.floor(Math.random()*w);
+      dy2 = Math.floor(Math.random()*h);
+      tries++;
+    } while(tries<100 && (grid[dy2][dx2]!==0 || (Math.abs(dx2-hqX)<4&&Math.abs(dy2-hqY)<4)));
+    if(tries<100) {
+      for(let a=-1;a<=1;a++) for(let b=-1;b<=1;b++) {
+        const ty=dy2+a, tx=dx2+b;
+        if(ty>=0&&ty<h&&tx>=0&&tx<w&&grid[ty][tx]===0) grid[ty][tx]=6;
+      }
+    }
+  }
+
+  // Find player start - a road tile near top-left
+  let startX=2, startY=2;
+  outer: for(let y=1; y<h; y++) {
+    for(let x=1; x<w; x++) {
+      if(grid[y][x]===0) { startX=x; startY=y; break outer; }
+    }
+  }
+
+  return { grid, w, h, hqX, hqY, startX, startY, buildings };
+}
+
+// ============================================================
+// SPAWN OKRs AND POWERUPS
+// ============================================================
+function spawnOKRs(level) {
+  okrs = [];
+  const count = 3 + level * 2;
+  requiredDeliveries = count;
+  deliveredOKRs = 0;
+
+  // Find office tiles
+  const offices = [];
+  for(let y=0; y<mapData.h; y++) {
+    for(let x=0; x<mapData.w; x++) {
+      if(mapData.grid[y][x]===7) offices.push({x,y});
+    }
+  }
+
+  // Also allow road tiles if not enough offices
+  const roads = [];
+  for(let y=0; y<mapData.h; y++) {
+    for(let x=0; x<mapData.w; x++) {
+      if(mapData.grid[y][x]===0) roads.push({x,y});
+    }
+  }
+
+  const spawnTiles = offices.length >= count ? offices : [...offices, ...roads];
+
+  for(let i=0; i<count; i++) {
+    const idx = Math.floor(Math.random()*spawnTiles.length);
+    const t = spawnTiles[idx];
+    okrs.push({ x:t.x*TILE+TILE/2, y:t.y*TILE+TILE/2, collected:false, bobPhase:Math.random()*Math.PI*2 });
+  }
+}
+
+function spawnPowerups(level) {
+  powerups = [];
+  const count = 2 + level;
+  for(let i=0; i<count; i++) {
+    let px, py, tries=0;
+    do {
+      px = Math.floor(Math.random()*mapData.w);
+      py = Math.floor(Math.random()*mapData.h);
+      tries++;
+    } while(tries<100 && mapData.grid[py][px]!==0);
+    const type = POWERUP_TYPES[Math.floor(Math.random()*POWERUP_TYPES.length)];
+    powerups.push({ x:px*TILE+TILE/2, y:py*TILE+TILE/2, type, collected:false, bobPhase:Math.random()*Math.PI*2 });
+  }
+}
+
+function spawnEnemies(level) {
+  enemies = [];
+  const count = 1 + Math.floor(level * 1.5);
+  for(let i=0; i<count; i++) {
+    let ex, ey, tries=0;
+    do {
+      ex = Math.floor(Math.random()*mapData.w);
+      ey = Math.floor(Math.random()*mapData.h);
+      tries++;
+    } while(tries<100 && (mapData.grid[ey][ex]!==0 || (Math.abs(ex-mapData.hqX)<5&&Math.abs(ey-mapData.hqY)<5)));
+    enemies.push({
+      x:ex*TILE+TILE/2, y:ey*TILE+TILE/2,
+      vx:(Math.random()-0.5)*60, vy:(Math.random()-0.5)*60,
+      changeTimer:Math.random()*3,
+      phase:Math.random()*Math.PI*2
+    });
+  }
+}
+
+// ============================================================
+// COLLISION
+// ============================================================
+function isSolid(tileX, tileY) {
+  if(tileX<0||tileY<0||tileX>=mapData.w||tileY>=mapData.h) return true;
+  const t = mapData.grid[tileY][tileX];
+  if(activePowerups.shield) return t===3||t===7; // buildings always solid, but pass meetings/debt
+  return t===3||t===5||t===7; // building, meeting, office building
+}
+
+function tileAt(px, py) {
+  const tx = Math.floor(px/TILE);
+  const ty = Math.floor(py/TILE);
+  if(tx<0||ty<0||tx>=mapData.w||ty>=mapData.h) return -1;
+  return mapData.grid[ty][tx];
+}
+
+// ============================================================
+// PARTICLES
+// ============================================================
+function spawnParticles(x, y, count, color, spread, life) {
+  for(let i=0; i<count; i++) {
+    particles.push({
+      x, y,
+      vx:(Math.random()-0.5)*spread,
+      vy:(Math.random()-0.5)*spread - spread*0.3,
+      life: life || (0.5+Math.random()*0.5),
+      maxLife: life || (0.5+Math.random()*0.5),
+      color: color || `hsl(${Math.random()*360},80%,60%)`,
+      size: 2+Math.random()*3
+    });
+  }
+}
+
+function spawnConfetti(x, y) {
+  const colors = ['#E21A2C','#006491','#FFD700','#00CC66','#FF69B4','#FF8C00'];
+  for(let i=0; i<40; i++) {
+    particles.push({
+      x, y,
+      vx:(Math.random()-0.5)*300,
+      vy:(Math.random()-0.5)*300 - 100,
+      life:1+Math.random(),
+      maxLife:1+Math.random(),
+      color:colors[Math.floor(Math.random()*colors.length)],
+      size:3+Math.random()*4,
+      confetti:true
+    });
+  }
+}
+
+// ============================================================
+// SHOW QUOTE
+// ============================================================
+function showQuote(text) {
+  quotePopup.textContent = text;
+  quotePopup.style.opacity = '1';
+  quoteTimer = 2.5;
+}
+
+// ============================================================
+// SCREENS
+// ============================================================
+function showTitle() {
+  gameState = 'title';
+  hud.style.display = 'none';
+  minimapContainer.style.display = 'none';
+  gameRunning = false;
+  overlay.style.display = 'flex';
+  overlay.className = 'screen-bg';
+  overlay.innerHTML = `
+    <div style="text-align:center;">
+      <div class="title-logo">TEAM DOMINOS</div>
+      <div class="title-sub">Delivering OKRs Since 2024</div>
+      <div style="margin:20px 0;font-size:40px;">&#127829;</div>
+      <button class="menu-btn" onclick="showCharSelect()">PLAY GAME</button><br>
+      <button class="menu-btn secondary" onclick="showLeaderboard()">LEADERBOARD</button>
+      <div style="margin-top:24px;color:#666;font-size:12px;">Arrow Keys or WASD to move | Deliver OKRs to Jrod's HQ</div>
+    </div>
+  `;
+}
+
+function showCharSelect() {
+  gameState = 'charSelect';
+  overlay.innerHTML = `
+    <button class="back-btn" onclick="showTitle()">< Back</button>
+    <div style="text-align:center;">
+      <div style="font-size:24px;font-weight:bold;margin-bottom:4px;">Choose Your Character</div>
+      <div style="color:#aaa;font-size:13px;margin-bottom:16px;">Each team member has unique abilities</div>
+      <div class="char-grid" id="char-grid"></div>
+      <input class="name-input" id="player-name-input" type="text" placeholder="Enter Your Name" maxlength="20" value="${playerName}">
+      <br>
+      <button class="menu-btn" id="start-btn" style="opacity:0.5;pointer-events:none;" onclick="startGame()">START DELIVERY</button>
+    </div>
+  `;
+
+  const grid = document.getElementById('char-grid');
+  CHARACTERS.forEach((c, i) => {
+    const card = document.createElement('div');
+    card.className = 'char-card';
+    card.innerHTML = `
+      <canvas width="48" height="48" id="char-preview-${i}" style="margin:0 auto;display:block;image-rendering:pixelated;"></canvas>
+      <div class="char-name" style="color:${c.color}">${c.name}</div>
+      <div class="char-desc">${c.desc}</div>
+      <div class="char-stat">
+        <span>Speed</span>
+        <div class="stat-bar"><div class="stat-fill speed" style="width:${c.speed*20}%"></div></div>
+      </div>
+      <div class="char-stat">
+        <span>Capacity</span>
+        <div class="stat-bar"><div class="stat-fill capacity" style="width:${c.capacity*20}%"></div></div>
+      </div>
+    `;
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.char-card').forEach(cc => cc.classList.remove('selected'));
+      card.classList.add('selected');
+      selectedChar = c;
+      document.getElementById('start-btn').style.opacity='1';
+      document.getElementById('start-btn').style.pointerEvents='auto';
+    });
+    grid.appendChild(card);
+
+    // Draw small character preview
+    setTimeout(() => {
+      const pc = document.getElementById(`char-preview-${i}`);
+      if(pc) {
+        const pctx = pc.getContext('2d');
+        drawCharacterSprite(pctx, 24, 24, c, 0, 1.5);
+      }
+    }, 0);
+  });
+}
+
+function showLeaderboard() {
+  gameState = 'leaderboard';
+  const scores = getScores();
+  overlay.innerHTML = `
+    <button class="back-btn" onclick="showTitle()">< Back</button>
+    <div style="text-align:center;">
+      <div style="font-size:24px;font-weight:bold;margin-bottom:16px;color:#FFD700;">Leaderboard</div>
+      <div class="leaderboard-table">
+        <div class="lb-row header">
+          <span style="width:30px">#</span>
+          <span style="flex:1;text-align:left;">Player</span>
+          <span style="width:80px;">Character</span>
+          <span style="width:80px;">Tokens</span>
+          <span style="width:60px;">Level</span>
+        </div>
+        ${scores.length===0 ? '<div style="color:#666;padding:20px;">No scores yet!</div>' : ''}
+        ${scores.map((s,i) => `
+          <div class="lb-row">
+            <span style="width:30px;color:#FFD700;">${i+1}</span>
+            <span style="flex:1;text-align:left;">${escHtml(s.name)}</span>
+            <span style="width:80px;font-size:11px;">${escHtml(s.character)}</span>
+            <span style="width:80px;color:#E21A2C;">${Math.floor(s.tokens).toLocaleString()}</span>
+            <span style="width:60px;">${s.level}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function showLevelComplete() {
+  gameState = 'levelComplete';
+  gameRunning = false;
+  overlay.style.display = 'flex';
+  const quote = JROD_QUOTES[Math.floor(Math.random()*JROD_QUOTES.length)];
+  overlay.innerHTML = `
+    <div class="level-complete-box">
+      <div class="lc-title">Level ${currentLevel} Complete!</div>
+      <div class="lc-stat">OKRs Delivered: ${deliveredOKRs}</div>
+      <div class="lc-stat">Tokens Used: <span style="color:#E21A2C;">${Math.floor(tokens).toLocaleString()}</span></div>
+      <div class="lc-stat">Time: ${formatTime(elapsedTime)}</div>
+      <div class="lc-quote">"${quote}" - Jrod</div>
+      <button class="menu-btn" onclick="nextLevel()">NEXT LEVEL</button>
+    </div>
+  `;
+}
+
+function showGameOver() {
+  gameState = 'gameOver';
+  gameRunning = false;
+  overlay.style.display = 'flex';
+
+  const shareText = `\u{1F355} TEAM DOMINOS \u{1F355}\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nPlayer: ${playerName} as ${selectedChar.name}\nOKRs Delivered: ${totalDelivered}\nTokens Used: ${Math.floor(tokens).toLocaleString()}\nTime: ${formatTime(elapsedTime)}\nLevel Reached: ${currentLevel}\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nCan you beat my score?\nhttps://simonbourdages.github.io/team-dominos/`;
+
+  overlay.innerHTML = `
+    <div class="level-complete-box" style="max-width:460px;">
+      <div class="lc-title" style="font-size:32px;">Game Complete!</div>
+      <div style="font-size:40px;margin:8px 0;">\u{1F355}\u{1F3C6}\u{1F355}</div>
+      <div class="lc-stat">Player: ${escHtml(playerName)} as ${selectedChar.name}</div>
+      <div class="lc-stat">Total OKRs Delivered: ${totalDelivered}</div>
+      <div class="lc-stat">Total Tokens: <span style="color:#E21A2C;font-size:22px;">${Math.floor(tokens).toLocaleString()}</span></div>
+      <div class="lc-stat">Time: ${formatTime(elapsedTime)}</div>
+      <div class="lc-stat">Level Reached: ${currentLevel}</div>
+      <div class="share-text" id="share-text">${escHtml(shareText)}</div>
+      <button class="menu-btn" onclick="copyShare()" id="share-btn">COPY & SHARE</button>
+      <div class="copied-msg" id="copied-msg" style="display:none;">Copied to clipboard!</div>
+      <br>
+      <button class="menu-btn secondary" onclick="showTitle()">PLAY AGAIN</button>
+    </div>
+  `;
+
+  saveScore({
+    name: playerName,
+    character: selectedChar.name,
+    tokens: Math.floor(tokens),
+    level: currentLevel,
+    delivered: totalDelivered,
+    time: elapsedTime
+  });
+}
+
+function copyShare() {
+  const text = document.getElementById('share-text').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    document.getElementById('copied-msg').style.display = 'block';
+    document.getElementById('share-btn').textContent = 'COPIED!';
+  }).catch(() => {
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    document.getElementById('copied-msg').style.display = 'block';
+  });
+}
+
+// ============================================================
+// SCORE PERSISTENCE
+// ============================================================
+function getScores() {
+  try { return JSON.parse(localStorage.getItem('teamDominosScores')||'[]'); } catch(e) { return []; }
+}
+
+function saveScore(score) {
+  const scores = getScores();
+  scores.push(score);
+  scores.sort((a,b) => a.tokens - b.tokens); // Lower is better
+  localStorage.setItem('teamDominosScores', JSON.stringify(scores.slice(0,10)));
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatTime(s) {
+  const m = Math.floor(s/60);
+  const sec = Math.floor(s%60);
+  return `${m}:${sec.toString().padStart(2,'0')}`;
+}
+
+// ============================================================
+// GAME START / LEVEL
+// ============================================================
+function startGame() {
+  playerName = document.getElementById('player-name-input').value.trim() || 'Anonymous';
+  if(!selectedChar) return;
+
+  tokens = 0;
+  totalDelivered = 0;
+  elapsedTime = 0;
+  currentLevel = 1;
+  activePowerups = {};
+
+  initLevel(1);
+}
+
+function nextLevel() {
+  currentLevel++;
+  if(currentLevel > 5) {
+    showGameOver();
+    return;
+  }
+  initLevel(currentLevel);
+}
+
+function initLevel(level) {
+  mapData = generateMap(level);
+  spawnOKRs(level);
+  spawnPowerups(level);
+  spawnEnemies(level);
+  particles = [];
+  carriedOKRs = 0;
+  activePowerups = {};
+
+  player = {
+    x: mapData.startX * TILE + TILE/2,
+    y: mapData.startY * TILE + TILE/2,
+    vx: 0, vy: 0,
+    facing: 0, // 0=down,1=left,2=right,3=up
+    animTimer: 0,
+    moving: false,
+    baseSpeed: selectedChar.speed * 40 + 40 // 80-240 px/s
+  };
+
+  gameState = 'playing';
+  gameRunning = true;
+  overlay.style.display = 'none';
+  hud.style.display = 'flex';
+  minimapContainer.style.display = 'block';
+  lastTime = performance.now();
+}
+
+// ============================================================
+// UPDATE
+// ============================================================
+function update(dt) {
+  if(!gameRunning) return;
+
+  elapsedTime += dt;
+  tokens += TOKEN_PER_SEC * dt;
+
+  // Player input
+  let dx = 0, dy = 0;
+  if(keys['arrowleft']||keys['a']) dx -= 1;
+  if(keys['arrowright']||keys['d']) dx += 1;
+  if(keys['arrowup']||keys['w']) dy -= 1;
+  if(keys['arrowdown']||keys['s']) dy += 1;
+  dx += mobileDir.x;
+  dy += mobileDir.y;
+
+  // Normalize diagonal
+  if(dx!==0 && dy!==0) { dx *= 0.707; dy *= 0.707; }
+
+  let speed = player.baseSpeed;
+  if(activePowerups.sprint) speed *= 2;
+
+  // Check tech debt slow
+  const ptile = tileAt(player.x, player.y);
+  if(ptile === 6 && !activePowerups.shield) speed *= 0.4;
+
+  player.moving = dx!==0||dy!==0;
+  if(player.moving) {
+    player.animTimer += dt * 8;
+    tokens += TOKEN_PER_MOVE * dt * 10; // scale with dt
+
+    if(dy<0) player.facing=3;
+    else if(dy>0) player.facing=0;
+    if(dx<0) player.facing=1;
+    else if(dx>0) player.facing=2;
+  }
+
+  // Movement with collision
+  const newX = player.x + dx * speed * dt;
+  const newY = player.y + dy * speed * dt;
+  const r = 6; // collision radius
+
+  // Check X movement
+  if(!isSolid(Math.floor((newX-r)/TILE), Math.floor((player.y-r)/TILE)) &&
+     !isSolid(Math.floor((newX+r)/TILE), Math.floor((player.y-r)/TILE)) &&
+     !isSolid(Math.floor((newX-r)/TILE), Math.floor((player.y+r)/TILE)) &&
+     !isSolid(Math.floor((newX+r)/TILE), Math.floor((player.y+r)/TILE))) {
+    player.x = newX;
+  } else if(dx!==0) {
+    shakeTimer = 0.1;
+    shakeIntensity = 2;
+  }
+
+  // Check Y movement
+  if(!isSolid(Math.floor((player.x-r)/TILE), Math.floor((newY-r)/TILE)) &&
+     !isSolid(Math.floor((player.x+r)/TILE), Math.floor((newY-r)/TILE)) &&
+     !isSolid(Math.floor((player.x-r)/TILE), Math.floor((newY+r)/TILE)) &&
+     !isSolid(Math.floor((player.x+r)/TILE), Math.floor((newY+r)/TILE))) {
+    player.y = newY;
+  } else if(dy!==0) {
+    shakeTimer = 0.1;
+    shakeIntensity = 2;
+  }
+
+  // Clamp to map
+  player.x = Math.max(r, Math.min(mapData.w*TILE-r, player.x));
+  player.y = Math.max(r, Math.min(mapData.h*TILE-r, player.y));
+
+  // Pick up OKRs
+  for(let o of okrs) {
+    if(o.collected) continue;
+    const dist = Math.hypot(player.x-o.x, player.y-o.y);
+    if(dist < TILE*0.8 && carriedOKRs < selectedChar.capacity) {
+      o.collected = true;
+      carriedOKRs++;
+      tokens += TOKEN_PER_PICKUP;
+      spawnParticles(o.x, o.y, 15, COLORS.gold, 80, 0.6);
+      showQuote(`OKR picked up! (${carriedOKRs}/${selectedChar.capacity})`);
+    }
+  }
+  // Bob animation on uncollected
+  for(let o of okrs) {
+    if(!o.collected) o.bobPhase += dt * 3;
+  }
+
+  // Pick up powerups
+  for(let p of powerups) {
+    if(p.collected) continue;
+    const dist = Math.hypot(player.x-p.x, player.y-p.y);
+    if(dist < TILE*0.8) {
+      p.collected = true;
+      spawnParticles(p.x, p.y, 20, p.type.color, 100, 0.5);
+
+      if(p.type.id === 'teleport') {
+        // Teleport to random road
+        let tx, ty, tries=0;
+        do {
+          tx = Math.floor(Math.random()*mapData.w);
+          ty = Math.floor(Math.random()*mapData.h);
+          tries++;
+        } while(tries<200 && mapData.grid[ty][tx]!==0);
+        player.x = tx*TILE+TILE/2;
+        player.y = ty*TILE+TILE/2;
+        spawnConfetti(player.x, player.y);
+        showQuote('Standup Skip! Teleported!');
+      } else if(p.type.id === 'sprint') {
+        activePowerups.sprint = 5;
+        showQuote('Sprint Boost! 2x Speed!');
+      } else if(p.type.id === 'shield') {
+        activePowerups.shield = 3;
+        showQuote('Agile Shield! Phase through!');
+      }
+    }
+    if(!p.collected) p.bobPhase += dt * 3;
+  }
+
+  // Update active powerups
+  for(let key in activePowerups) {
+    activePowerups[key] -= dt;
+    if(activePowerups[key] <= 0) delete activePowerups[key];
+  }
+
+  // Deliver OKRs to HQ
+  const hqCenterX = mapData.hqX * TILE + TILE/2;
+  const hqCenterY = mapData.hqY * TILE + TILE/2;
+  const distToHQ = Math.hypot(player.x-hqCenterX, player.y-hqCenterY);
+  if(distToHQ < TILE*2 && carriedOKRs > 0) {
+    tokens += TOKEN_PER_DELIVERY * carriedOKRs;
+    deliveredOKRs += carriedOKRs;
+    totalDelivered += carriedOKRs;
+    spawnConfetti(hqCenterX, hqCenterY);
+    showQuote(JROD_QUOTES[Math.floor(Math.random()*JROD_QUOTES.length)]);
+    carriedOKRs = 0;
+
+    if(deliveredOKRs >= requiredDeliveries) {
+      setTimeout(() => showLevelComplete(), 1500);
+    }
+  }
+
+  // Update enemies
+  for(let e of enemies) {
+    e.changeTimer -= dt;
+    if(e.changeTimer <= 0) {
+      e.changeTimer = 2 + Math.random()*3;
+      e.vx = (Math.random()-0.5) * 80;
+      e.vy = (Math.random()-0.5) * 80;
+    }
+    const nex = e.x + e.vx * dt;
+    const ney = e.y + e.vy * dt;
+    const etx = Math.floor(nex/TILE);
+    const ety = Math.floor(ney/TILE);
+    if(etx>=0&&etx<mapData.w&&ety>=0&&ety<mapData.h) {
+      const t = mapData.grid[ety][etx];
+      if(t===0||t===1||t===6) { e.x=nex; e.y=ney; }
+      else { e.vx=-e.vx; e.vy=-e.vy; e.changeTimer=0.1; }
+    } else { e.vx=-e.vx; e.vy=-e.vy; }
+    e.phase += dt * 2;
+
+    // Collision with player
+    if(!activePowerups.shield) {
+      const dist = Math.hypot(player.x-e.x, player.y-e.y);
+      if(dist < TILE*0.7) {
+        requiredDeliveries++;
+        shakeTimer = 0.3;
+        shakeIntensity = 6;
+        spawnParticles(player.x, player.y, 20, '#FF0000', 120, 0.4);
+        showQuote('Scope Creep! +1 OKR required!');
+        // Push enemy away
+        const angle = Math.atan2(e.y-player.y, e.x-player.x);
+        e.x += Math.cos(angle)*TILE*2;
+        e.y += Math.sin(angle)*TILE*2;
+        e.changeTimer = 0.5;
+      }
+    }
+  }
+
+  // Update particles
+  for(let i=particles.length-1; i>=0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 200 * dt; // gravity
+    p.life -= dt;
+    if(p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Shake
+  if(shakeTimer > 0) shakeTimer -= dt;
+
+  // Quote popup
+  if(quoteTimer > 0) {
+    quoteTimer -= dt;
+    if(quoteTimer <= 0) quotePopup.style.opacity = '0';
+  }
+
+  // Camera follow player
+  camera.x = player.x - canvasWidth/2;
+  camera.y = player.y - canvasHeight/2;
+  camera.x = Math.max(0, Math.min(mapData.w*TILE - canvasWidth, camera.x));
+  camera.y = Math.max(0, Math.min(mapData.h*TILE - canvasHeight, camera.y));
+
+  // Update HUD
+  document.getElementById('hud-tokens').textContent = Math.floor(tokens).toLocaleString();
+  document.getElementById('hud-okrs').textContent = `${carriedOKRs}/${selectedChar.capacity}`;
+  document.getElementById('hud-level').textContent = currentLevel;
+  document.getElementById('hud-time').textContent = formatTime(elapsedTime);
+  document.getElementById('hud-goal').textContent = `${deliveredOKRs}/${requiredDeliveries}`;
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function render() {
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+  ctx.fillStyle = '#0d0d1a';
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  if(gameState !== 'playing') return;
+
+  ctx.save();
+
+  // Screen shake
+  let shakeX=0, shakeY=0;
+  if(shakeTimer > 0) {
+    shakeX = (Math.random()-0.5)*shakeIntensity*2;
+    shakeY = (Math.random()-0.5)*shakeIntensity*2;
+  }
+  ctx.translate(-camera.x+shakeX, -camera.y+shakeY);
+
+  // Calculate visible tiles
+  const startTX = Math.max(0, Math.floor(camera.x/TILE)-1);
+  const startTY = Math.max(0, Math.floor(camera.y/TILE)-1);
+  const endTX = Math.min(mapData.w, Math.ceil((camera.x+canvasWidth)/TILE)+1);
+  const endTY = Math.min(mapData.h, Math.ceil((camera.y+canvasHeight)/TILE)+1);
+
+  // Draw tiles
+  for(let y=startTY; y<endTY; y++) {
+    for(let x=startTX; x<endTX; x++) {
+      const t = mapData.grid[y][x];
+      const px = x*TILE, py = y*TILE;
+
+      switch(t) {
+        case 0: // road
+          ctx.fillStyle = COLORS.road;
+          ctx.fillRect(px, py, TILE, TILE);
+          // Road markings
+          if(y%2===0 && x%7<2) {
+            ctx.fillStyle = 'rgba(255,255,255,0.15)';
+            ctx.fillRect(px+TILE/2-1, py+2, 2, TILE-4);
+          }
+          break;
+        case 1: // sidewalk
+          ctx.fillStyle = COLORS.sidewalk;
+          ctx.fillRect(px, py, TILE, TILE);
+          ctx.fillStyle = 'rgba(0,0,0,0.1)';
+          ctx.fillRect(px, py, TILE, 1);
+          ctx.fillRect(px, py, 1, TILE);
+          break;
+        case 2: // grass
+          ctx.fillStyle = COLORS.grass;
+          ctx.fillRect(px, py, TILE, TILE);
+          // Grass texture
+          ctx.fillStyle = 'rgba(0,0,0,0.08)';
+          if((x+y)%3===0) ctx.fillRect(px+8, py+8, 2, 2);
+          if((x+y)%5===1) ctx.fillRect(px+20, py+14, 2, 2);
+          break;
+        case 3: // building
+          ctx.fillStyle = COLORS.building;
+          ctx.fillRect(px, py, TILE, TILE);
+          ctx.fillStyle = COLORS.buildingTop;
+          ctx.fillRect(px+1, py+1, TILE-2, TILE-2);
+          // Windows
+          ctx.fillStyle = 'rgba(255,255,200,0.3)';
+          ctx.fillRect(px+4, py+4, 6, 6);
+          ctx.fillRect(px+TILE-10, py+4, 6, 6);
+          ctx.fillRect(px+4, py+TILE-10, 6, 6);
+          ctx.fillRect(px+TILE-10, py+TILE-10, 6, 6);
+          break;
+        case 4: // HQ
+          ctx.fillStyle = COLORS.hq;
+          ctx.fillRect(px, py, TILE, TILE);
+          ctx.fillStyle = '#FF6B6B';
+          ctx.fillRect(px+2, py+2, TILE-4, TILE-4);
+          // J logo
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 14px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText('J', px+TILE/2, py+TILE/2+5);
+          break;
+        case 5: // meeting blocker
+          ctx.fillStyle = COLORS.meeting;
+          ctx.fillRect(px, py, TILE, TILE);
+          ctx.fillStyle = '#A0522D';
+          ctx.fillRect(px+2, py+2, TILE-4, TILE-4);
+          ctx.fillStyle = '#fff';
+          ctx.font = '8px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText('MTG', px+TILE/2, py+TILE/2+3);
+          break;
+        case 6: // tech debt
+          ctx.fillStyle = COLORS.techDebt;
+          ctx.fillRect(px, py, TILE, TILE);
+          ctx.fillStyle = 'rgba(100,0,100,0.3)';
+          ctx.fillRect(px+2, py+2, TILE-4, TILE-4);
+          // Warning stripes
+          ctx.strokeStyle = 'rgba(255,0,255,0.2)';
+          ctx.lineWidth = 1;
+          for(let i=0; i<TILE; i+=6) {
+            ctx.beginPath(); ctx.moveTo(px+i, py); ctx.lineTo(px, py+i); ctx.stroke();
+          }
+          break;
+        case 7: // office building
+          ctx.fillStyle = '#4a5a6e';
+          ctx.fillRect(px, py, TILE, TILE);
+          ctx.fillStyle = '#5a6a80';
+          ctx.fillRect(px+1, py+1, TILE-2, TILE-2);
+          // Lit windows (offices have more light)
+          ctx.fillStyle = 'rgba(255,255,150,0.5)';
+          ctx.fillRect(px+3, py+3, 8, 6);
+          ctx.fillRect(px+TILE-11, py+3, 8, 6);
+          ctx.fillRect(px+3, py+TILE-9, 8, 6);
+          ctx.fillRect(px+TILE-11, py+TILE-9, 8, 6);
+          break;
+      }
+    }
+  }
+
+  // Draw HQ marker (glow)
+  const hqPx = mapData.hqX*TILE+TILE/2;
+  const hqPy = mapData.hqY*TILE+TILE/2;
+  const hqGlow = 0.5 + Math.sin(performance.now()/300)*0.3;
+  ctx.beginPath();
+  ctx.arc(hqPx, hqPy, TILE*2, 0, Math.PI*2);
+  ctx.fillStyle = `rgba(226,26,44,${hqGlow*0.15})`;
+  ctx.fill();
+  // "JROD HQ" label
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText("JROD'S HQ", hqPx, hqPy - TILE*1.5 - 4);
+
+  // Draw Jrod at HQ
+  drawJrod(ctx, hqPx, hqPy - TILE*0.5);
+
+  // Draw OKRs
+  for(let o of okrs) {
+    if(o.collected) continue;
+    const bob = Math.sin(o.bobPhase)*3;
+    const ox = o.x, oy = o.y + bob;
+
+    // Glow
+    ctx.beginPath();
+    ctx.arc(ox, oy, 12, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,215,0,0.2)';
+    ctx.fill();
+
+    // Pizza box
+    ctx.fillStyle = '#D4A44A';
+    ctx.fillRect(ox-8, oy-8, 16, 16);
+    ctx.fillStyle = '#E8C56A';
+    ctx.fillRect(ox-7, oy-7, 14, 14);
+    // OKR text
+    ctx.fillStyle = '#8B4513';
+    ctx.font = 'bold 7px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('OKR', ox, oy+3);
+
+    // Sparkle
+    const sp = (performance.now()/200 + o.bobPhase) % (Math.PI*2);
+    ctx.fillStyle = `rgba(255,215,0,${0.5+Math.sin(sp)*0.5})`;
+    ctx.fillRect(ox-1+Math.cos(sp)*10, oy-1+Math.sin(sp)*6, 2, 2);
+  }
+
+  // Draw powerups
+  for(let p of powerups) {
+    if(p.collected) continue;
+    const bob = Math.sin(p.bobPhase)*3;
+    const px2 = p.x, py2 = p.y + bob;
+
+    ctx.beginPath();
+    ctx.arc(px2, py2, 10, 0, Math.PI*2);
+    ctx.fillStyle = p.type.color + '40';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(px2, py2, 7, 0, Math.PI*2);
+    ctx.fillStyle = p.type.color;
+    ctx.fill();
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(p.type.icon, px2, py2+3);
+  }
+
+  // Draw enemies (Scope Creep Monsters)
+  for(let e of enemies) {
+    const pulse = Math.sin(e.phase)*2;
+    const ex = e.x, ey = e.y;
+
+    // Body
+    ctx.fillStyle = '#44AA44';
+    ctx.beginPath();
+    ctx.arc(ex, ey, 10+pulse, 0, Math.PI*2);
+    ctx.fill();
+
+    // Eyes
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(ex-4, ey-3, 3, 0, Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(ex+4, ey-3, 3, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(ex-4, ey-3, 1.5, 0, Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(ex+4, ey-3, 1.5, 0, Math.PI*2);
+    ctx.fill();
+
+    // Mouth
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(ex, ey+3, 4, 0, Math.PI);
+    ctx.stroke();
+
+    // Label
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.font = '7px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('SCOPE', ex, ey+18);
+    ctx.fillText('CREEP', ex, ey+25);
+  }
+
+  // Draw player
+  drawCharacterSprite(ctx, player.x, player.y-4, selectedChar, player.facing, 1, player.moving, player.animTimer);
+
+  // Draw power-up effect indicators on player
+  if(activePowerups.sprint) {
+    ctx.strokeStyle = 'rgba(0,255,0,0.4)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 14, 0, Math.PI*2);
+    ctx.stroke();
+  }
+  if(activePowerups.shield) {
+    ctx.strokeStyle = 'rgba(0,191,255,0.5)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 16, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 18, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(0,191,255,0.2)';
+    ctx.stroke();
+  }
+
+  // Draw carried OKR indicator above player
+  if(carriedOKRs > 0) {
+    ctx.fillStyle = COLORS.gold;
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`x${carriedOKRs}`, player.x, player.y - 20);
+    // Small pizza icon
+    ctx.fillStyle = '#D4A44A';
+    ctx.fillRect(player.x-14, player.y-28, 10, 10);
+    ctx.fillStyle = '#E8C56A';
+    ctx.fillRect(player.x-13, player.y-27, 8, 8);
+  }
+
+  // Arrow pointing to HQ when far
+  if(distToHQ(player.x, player.y) > canvasWidth*0.4) {
+    const angle = Math.atan2(hqPy-player.y, hqPx-player.x);
+    const arrowDist = 60;
+    const ax = player.x + Math.cos(angle)*arrowDist;
+    const ay = player.y + Math.sin(angle)*arrowDist;
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(angle);
+    ctx.fillStyle = 'rgba(226,26,44,0.6)';
+    ctx.beginPath();
+    ctx.moveTo(8, 0);
+    ctx.lineTo(-4, -5);
+    ctx.lineTo(-4, 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Draw particles
+  for(let p of particles) {
+    const alpha = p.life / p.maxLife;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    if(p.confetti) {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.life * 5);
+      ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size*0.5);
+      ctx.restore();
+    } else {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size*alpha, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.restore();
+
+  // Draw minimap
+  drawMinimap();
+}
+
+function distToHQ(px, py) {
+  return Math.hypot(px - mapData.hqX*TILE-TILE/2, py - mapData.hqY*TILE-TILE/2);
+}
+
+// ============================================================
+// CHARACTER DRAWING
+// ============================================================
+function drawCharacterSprite(ctx, x, y, charData, facing, scale, moving, animTimer) {
+  scale = scale || 1;
+  const s = scale;
+  ctx.save();
+  ctx.translate(x, y);
+
+  const walkOffset = moving ? Math.sin(animTimer || 0)*2*s : 0;
+  const legAnim = moving ? Math.sin((animTimer||0)*2)*3*s : 0;
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(0, 8*s+walkOffset, 6*s, 2*s, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // Legs
+  ctx.fillStyle = '#2a2a3a';
+  ctx.fillRect(-4*s, 3*s+walkOffset, 3*s, 6*s+legAnim);
+  ctx.fillRect(1*s, 3*s+walkOffset, 3*s, 6*s-legAnim);
+
+  // Body
+  ctx.fillStyle = charData.color;
+  ctx.fillRect(-5*s, -4*s+walkOffset, 10*s, 8*s);
+  // Shirt detail
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.fillRect(-1*s, -2*s+walkOffset, 2*s, 5*s);
+
+  // Head
+  ctx.fillStyle = '#FFCC99';
+  ctx.fillRect(-4*s, -10*s+walkOffset, 8*s, 7*s);
+
+  // Hair
+  ctx.fillStyle = charData.hair;
+  ctx.fillRect(-4*s, -11*s+walkOffset, 8*s, 3*s);
+
+  // Eyes (change based on facing)
+  ctx.fillStyle = '#222';
+  if(facing === 3) { // up - show back of head
+    ctx.fillStyle = charData.hair;
+    ctx.fillRect(-4*s, -10*s+walkOffset, 8*s, 6*s);
+  } else if(facing === 1) { // left
+    ctx.fillRect(-3*s, -7*s+walkOffset, 2*s, 2*s);
+  } else if(facing === 2) { // right
+    ctx.fillRect(1*s, -7*s+walkOffset, 2*s, 2*s);
+  } else { // down
+    ctx.fillRect(-3*s, -7*s+walkOffset, 2*s, 2*s);
+    ctx.fillRect(1*s, -7*s+walkOffset, 2*s, 2*s);
+    // Mouth
+    ctx.fillRect(-1*s, -4*s+walkOffset, 2*s, 1*s);
+  }
+
+  ctx.restore();
+}
+
+function drawJrod(ctx, x, y) {
+  ctx.save();
+  ctx.translate(x, y);
+
+  const bob = Math.sin(performance.now()/500)*2;
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(0, 10, 8, 3, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // Legs
+  ctx.fillStyle = '#1a1a3a';
+  ctx.fillRect(-5, 4+bob, 4, 7);
+  ctx.fillRect(1, 4+bob, 4, 7);
+
+  // Body (suit)
+  ctx.fillStyle = '#2a2a5a';
+  ctx.fillRect(-7, -5+bob, 14, 10);
+  // Tie
+  ctx.fillStyle = '#E21A2C';
+  ctx.fillRect(-1, -4+bob, 2, 8);
+
+  // Head
+  ctx.fillStyle = '#FFCC99';
+  ctx.fillRect(-5, -12+bob, 10, 8);
+  // Hair
+  ctx.fillStyle = '#333';
+  ctx.fillRect(-5, -13+bob, 10, 3);
+  // Sunglasses (boss energy)
+  ctx.fillStyle = '#000';
+  ctx.fillRect(-4, -9+bob, 3, 2);
+  ctx.fillRect(1, -9+bob, 3, 2);
+  ctx.fillRect(-1, -9+bob, 2, 1);
+
+  // Crown/star
+  ctx.fillStyle = '#FFD700';
+  ctx.beginPath();
+  ctx.moveTo(0, -16+bob);
+  ctx.lineTo(-3, -13+bob);
+  ctx.lineTo(3, -13+bob);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ============================================================
+// MINIMAP
+// ============================================================
+function drawMinimap() {
+  const mw = minimapCanvas.width;
+  const mh = minimapCanvas.height;
+  const scaleX = mw / (mapData.w * TILE);
+  const scaleY = mh / (mapData.h * TILE);
+  const sc = Math.min(scaleX, scaleY);
+
+  minimapCtx.fillStyle = 'rgba(0,0,0,0.8)';
+  minimapCtx.fillRect(0, 0, mw, mh);
+
+  // Draw tiles (every 2nd for performance)
+  for(let y=0; y<mapData.h; y+=2) {
+    for(let x=0; x<mapData.w; x+=2) {
+      const t = mapData.grid[y][x];
+      let color = null;
+      switch(t) {
+        case 0: color='#3a3a4a'; break;
+        case 1: color='#5a5a6a'; break;
+        case 2: color='#1a3a10'; break;
+        case 3: case 7: color='#4a4a5e'; break;
+        case 4: color='#E21A2C'; break;
+        case 5: color='#8B4513'; break;
+        case 6: color='#4a0e4a'; break;
+      }
+      if(color) {
+        minimapCtx.fillStyle = color;
+        minimapCtx.fillRect(x*TILE*sc, y*TILE*sc, TILE*2*sc+1, TILE*2*sc+1);
+      }
+    }
+  }
+
+  // OKR dots
+  minimapCtx.fillStyle = '#FFD700';
+  for(let o of okrs) {
+    if(!o.collected) {
+      minimapCtx.fillRect(o.x*sc-1, o.y*sc-1, 3, 3);
+    }
+  }
+
+  // Enemy dots
+  minimapCtx.fillStyle = '#44AA44';
+  for(let e of enemies) {
+    minimapCtx.fillRect(e.x*sc-1, e.y*sc-1, 3, 3);
+  }
+
+  // HQ
+  minimapCtx.fillStyle = '#E21A2C';
+  minimapCtx.fillRect(mapData.hqX*TILE*sc-2, mapData.hqY*TILE*sc-2, 5, 5);
+
+  // Player
+  minimapCtx.fillStyle = '#fff';
+  minimapCtx.fillRect(player.x*sc-2, player.y*sc-2, 4, 4);
+
+  // Camera viewport
+  minimapCtx.strokeStyle = 'rgba(255,255,255,0.3)';
+  minimapCtx.lineWidth = 1;
+  minimapCtx.strokeRect(camera.x*sc, camera.y*sc, canvasWidth*sc, canvasHeight*sc);
+}
+
+// ============================================================
+// GAME LOOP
+// ============================================================
+function gameLoop(timestamp) {
+  if(!lastTime) lastTime = timestamp;
+  let dt = (timestamp - lastTime) / 1000;
+  lastTime = timestamp;
+  if(dt > 0.1) dt = 0.1; // cap delta
+
+  if(gameRunning) {
+    update(dt);
+  }
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+showTitle();
+requestAnimationFrame(gameLoop);
+
+</script>
+</body>
+</html>
