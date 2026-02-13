@@ -1265,35 +1265,30 @@
             
             generatePhase2Level(levelNum) {
                 // Reset player in 2D
-                this.player = { x: 5, y: 0, z: 5, vx: 0, vy: 0, vz: 0 };
+                this.player = { x: 5, y: 0, z: 5, vx: 0, vy: 0, vz: 0, angle: 0 };
                 
-                // Generate isometric tiles
+                // Larger map with random layout
                 this.platforms = [];
-                const size = 20;
+                const size = 40;
                 for (let x = 0; x < size; x++) {
                     for (let z = 0; z < size; z++) {
-                        if (Math.random() > 0.3) {
-                            this.platforms.push({ x, y: 0, z, type: 'floor' });
-                        }
+                        this.platforms.push({ x, y: 0, z, type: 'floor' });
                     }
                 }
                 
-                // Place OKRs randomly
+                // Scatter OKRs across the larger map
                 this.okrs = [];
                 for (let i = 0; i < this.currentLevelData.okrGoal; i++) {
-                    const platform = this.platforms[Math.floor(Math.random() * this.platforms.length)];
-                    if (platform) {
-                        this.okrs.push({
-                            x: platform.x,
-                            y: platform.y + 1,
-                            z: platform.z,
-                            collected: false
-                        });
-                    }
+                    this.okrs.push({
+                        x: 2 + Math.random() * (size - 4),
+                        y: 1,
+                        z: 2 + Math.random() * (size - 4),
+                        collected: false
+                    });
                 }
                 
-                // HQ position
-                this.jrodHQ = { x: size - 2, y: 1, z: size - 2 };
+                // HQ at a random far corner
+                this.jrodHQ = { x: size - 5, y: 1, z: size - 5 };
                 
                 // Add spectators for this level
                 this.loadSpectatorsAnime(levelNum);
@@ -1484,8 +1479,11 @@
                 }
                 
                 // Keep in bounds
-                this.player.x = Math.max(0, Math.min(20, this.player.x));
-                this.player.z = Math.max(0, Math.min(20, this.player.z));
+                this.player.x = Math.max(-5, Math.min(45, this.player.x));
+                this.player.z = Math.max(-5, Math.min(45, this.player.z));
+                
+                // MP slowly regenerates
+                this.state.currencies.mp += 0.5 * dt;
                 
                 // Update AI workers
                 this.state.aiWorkers.forEach(worker => {
@@ -1572,21 +1570,22 @@
                 const offsetX = canvas.width / 2;
                 const offsetY = canvas.height / 2;
                 
-                // Draw office floor with cubicles (bigger grid, scrolls with player)
+                // Draw office floor with cubicles (fixed world grid, camera pans)
                 const tileSize = 32;
                 const gridRange = 15;
-                const fracX = this.player.x - Math.floor(this.player.x);
-                const fracZ = this.player.z - Math.floor(this.player.z);
                 
-                for (let gx = -gridRange; gx <= gridRange; gx++) {
-                    for (let gz = -gridRange; gz <= gridRange; gz++) {
-                        const wx = Math.floor(this.player.x) + gx;
-                        const wz = Math.floor(this.player.z) + gz;
-                        const rx = gx - fracX;
-                        const rz = gz - fracZ;
-                        const pos = this.toIso(rx, 0, rz);
+                // Camera offset: everything shifts opposite to player
+                const camX = this.player.x;
+                const camZ = this.player.z;
+                
+                for (let wx = Math.floor(camX) - gridRange; wx <= Math.floor(camX) + gridRange; wx++) {
+                    for (let wz = Math.floor(camZ) - gridRange; wz <= Math.floor(camZ) + gridRange; wz++) {
+                        const pos = this.toIso(wx - camX, 0, wz - camZ);
                         const sx = offsetX + pos.x;
                         const sy = offsetY + pos.y;
+                        
+                        // Skip tiles off screen
+                        if (sx < -tileSize * 2 || sx > canvas.width + tileSize * 2 || sy < -tileSize * 2 || sy > canvas.height + tileSize * 2) continue;
                         
                         // Carpet tile floor
                         const dark = (wx + wz) % 2 === 0;
@@ -1601,9 +1600,11 @@
                         ctx.closePath();
                         ctx.fill(); ctx.stroke();
                         
-                        // Cubicle walls every 4 tiles
-                        if (wx % 4 === 0 && wz % 4 !== 0 && wx > 0 && wx < 20 && wz > 0 && wz < 20) {
-                            // Vertical cubicle wall
+                        // Cubicle walls - use seeded random from world coords for variety
+                        const seed = (wx * 7 + wz * 13) & 0xff;
+                        const hasCubicle = seed < 60 && wx >= 0 && wx <= 40 && wz >= 0 && wz <= 40;
+                        
+                        if (hasCubicle && wx % 3 === 0) {
                             ctx.fillStyle = '#b0b8c0';
                             ctx.strokeStyle = '#000';
                             ctx.lineWidth = 2;
@@ -1614,20 +1615,9 @@
                             ctx.lineTo(sx, sy);
                             ctx.closePath();
                             ctx.fill(); ctx.stroke();
-                            
-                            // Wall top
-                            ctx.fillStyle = '#c8d0d8';
-                            ctx.beginPath();
-                            ctx.moveTo(sx - tileSize, sy + tileSize / 2 - 18);
-                            ctx.lineTo(sx, sy - 18);
-                            ctx.lineTo(sx + tileSize, sy + tileSize / 2 - 18);
-                            ctx.lineTo(sx, sy + tileSize - 18);
-                            ctx.closePath();
-                            ctx.fill(); ctx.stroke();
                         }
                         
-                        if (wz % 4 === 0 && wx % 4 !== 0 && wx > 0 && wx < 20 && wz > 0 && wz < 20) {
-                            // Horizontal cubicle wall
+                        if (hasCubicle && wz % 3 === 0) {
                             ctx.fillStyle = '#a8b0b8';
                             ctx.strokeStyle = '#000';
                             ctx.lineWidth = 2;
@@ -1640,8 +1630,8 @@
                             ctx.fill(); ctx.stroke();
                         }
                         
-                        // Desk inside some cubicles
-                        if (wx % 4 === 2 && wz % 4 === 2 && wx > 0 && wx < 20 && wz > 0 && wz < 20) {
+                        // Desks + monitors scattered randomly
+                        if (seed > 180 && seed < 210 && wx >= 0 && wx <= 40 && wz >= 0 && wz <= 40) {
                             ctx.fillStyle = '#8B6914';
                             ctx.strokeStyle = '#5a4510';
                             ctx.lineWidth = 1.5;
@@ -1653,11 +1643,20 @@
                             ctx.closePath();
                             ctx.fill(); ctx.stroke();
                             
-                            // Monitor on desk
                             ctx.fillStyle = '#333';
                             ctx.fillRect(sx - 4, sy + 2, 8, 6);
                             ctx.fillStyle = '#4488ff';
                             ctx.fillRect(sx - 3, sy + 3, 6, 4);
+                        }
+                        
+                        // Potted plants
+                        if (seed > 240 && wx >= 0 && wx <= 40 && wz >= 0 && wz <= 40) {
+                            ctx.fillStyle = '#6b4226';
+                            ctx.fillRect(sx - 3, sy + 10, 6, 6);
+                            ctx.fillStyle = '#228b22';
+                            ctx.beginPath();
+                            ctx.arc(sx, sy + 6, 6, 0, Math.PI * 2);
+                            ctx.fill();
                         }
                     }
                 }
@@ -1780,11 +1779,13 @@
                     ctx.fill();
                 });
                 
-                // Draw player car (top-down anime style)
-                const carAngle = this.player.angle || 0;
+                // Draw player car (top-down isometric)
+                // Convert world angle to isometric screen angle
+                const worldAngle = this.player.angle || 0;
+                const isoAngle = worldAngle + Math.PI / 4;
                 ctx.save();
                 ctx.translate(offsetX, offsetY - 15);
-                ctx.rotate(-carAngle);
+                ctx.rotate(isoAngle);
                 
                 // Car shadow
                 ctx.fillStyle = 'rgba(0,0,0,0.2)';
