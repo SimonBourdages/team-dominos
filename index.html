@@ -1578,29 +1578,93 @@
                 const offsetX = canvas.width / 2;
                 const offsetY = canvas.height / 2;
                 
-                // Draw grass tiles (isometric grid)
-                for (let gx = -8; gx <= 8; gx++) {
-                    for (let gz = -8; gz <= 8; gz++) {
+                // Draw office floor with cubicles (bigger grid, scrolls with player)
+                const tileSize = 32;
+                const gridRange = 15;
+                const fracX = this.player.x - Math.floor(this.player.x);
+                const fracZ = this.player.z - Math.floor(this.player.z);
+                
+                for (let gx = -gridRange; gx <= gridRange; gx++) {
+                    for (let gz = -gridRange; gz <= gridRange; gz++) {
                         const wx = Math.floor(this.player.x) + gx;
                         const wz = Math.floor(this.player.z) + gz;
-                        const rx = wx - this.player.x;
-                        const rz = wz - this.player.z;
+                        const rx = gx - fracX;
+                        const rz = gz - fracZ;
                         const pos = this.toIso(rx, 0, rz);
                         const sx = offsetX + pos.x;
                         const sy = offsetY + pos.y;
                         
-                        // Checkerboard grass
+                        // Carpet tile floor
                         const dark = (wx + wz) % 2 === 0;
-                        ctx.fillStyle = dark ? '#2d8a2d' : '#34a534';
-                        ctx.strokeStyle = '#1a6e1a';
-                        ctx.lineWidth = 1;
+                        ctx.fillStyle = dark ? '#6b7b8d' : '#7a8a9c';
+                        ctx.strokeStyle = '#5a6a7a';
+                        ctx.lineWidth = 0.5;
                         ctx.beginPath();
                         ctx.moveTo(sx, sy);
-                        ctx.lineTo(sx + 32, sy + 16);
-                        ctx.lineTo(sx, sy + 32);
-                        ctx.lineTo(sx - 32, sy + 16);
+                        ctx.lineTo(sx + tileSize, sy + tileSize / 2);
+                        ctx.lineTo(sx, sy + tileSize);
+                        ctx.lineTo(sx - tileSize, sy + tileSize / 2);
                         ctx.closePath();
                         ctx.fill(); ctx.stroke();
+                        
+                        // Cubicle walls every 4 tiles
+                        if (wx % 4 === 0 && wz % 4 !== 0 && wx > 0 && wx < 20 && wz > 0 && wz < 20) {
+                            // Vertical cubicle wall
+                            ctx.fillStyle = '#b0b8c0';
+                            ctx.strokeStyle = '#000';
+                            ctx.lineWidth = 2;
+                            ctx.beginPath();
+                            ctx.moveTo(sx - tileSize, sy + tileSize / 2);
+                            ctx.lineTo(sx - tileSize, sy + tileSize / 2 - 18);
+                            ctx.lineTo(sx, sy - 18);
+                            ctx.lineTo(sx, sy);
+                            ctx.closePath();
+                            ctx.fill(); ctx.stroke();
+                            
+                            // Wall top
+                            ctx.fillStyle = '#c8d0d8';
+                            ctx.beginPath();
+                            ctx.moveTo(sx - tileSize, sy + tileSize / 2 - 18);
+                            ctx.lineTo(sx, sy - 18);
+                            ctx.lineTo(sx + tileSize, sy + tileSize / 2 - 18);
+                            ctx.lineTo(sx, sy + tileSize - 18);
+                            ctx.closePath();
+                            ctx.fill(); ctx.stroke();
+                        }
+                        
+                        if (wz % 4 === 0 && wx % 4 !== 0 && wx > 0 && wx < 20 && wz > 0 && wz < 20) {
+                            // Horizontal cubicle wall
+                            ctx.fillStyle = '#a8b0b8';
+                            ctx.strokeStyle = '#000';
+                            ctx.lineWidth = 2;
+                            ctx.beginPath();
+                            ctx.moveTo(sx, sy);
+                            ctx.lineTo(sx, sy - 18);
+                            ctx.lineTo(sx + tileSize, sy + tileSize / 2 - 18);
+                            ctx.lineTo(sx + tileSize, sy + tileSize / 2);
+                            ctx.closePath();
+                            ctx.fill(); ctx.stroke();
+                        }
+                        
+                        // Desk inside some cubicles
+                        if (wx % 4 === 2 && wz % 4 === 2 && wx > 0 && wx < 20 && wz > 0 && wz < 20) {
+                            ctx.fillStyle = '#8B6914';
+                            ctx.strokeStyle = '#5a4510';
+                            ctx.lineWidth = 1.5;
+                            ctx.beginPath();
+                            ctx.moveTo(sx, sy + 4);
+                            ctx.lineTo(sx + 14, sy + 11);
+                            ctx.lineTo(sx, sy + 18);
+                            ctx.lineTo(sx - 14, sy + 11);
+                            ctx.closePath();
+                            ctx.fill(); ctx.stroke();
+                            
+                            // Monitor on desk
+                            ctx.fillStyle = '#333';
+                            ctx.fillRect(sx - 4, sy + 2, 8, 6);
+                            ctx.fillStyle = '#4488ff';
+                            ctx.fillRect(sx - 3, sy + 3, 6, 4);
+                        }
                     }
                 }
                 
