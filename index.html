@@ -961,49 +961,44 @@
             createOKR(x, y, z) {
                 const coinGroup = new THREE.Group();
                 
-                // Coin disc
-                const geometry = new THREE.CylinderGeometry(0.5, 0.5, 0.15, 24);
+                // Coin disc (upright — rotate so flat face is toward camera)
+                const geometry = new THREE.CylinderGeometry(0.5, 0.5, 0.12, 24);
                 const material = new THREE.MeshPhongMaterial({
                     color: 0xffd700,
                     emissive: 0xffaa00,
                     emissiveIntensity: 0.5
                 });
                 const disc = new THREE.Mesh(geometry, material);
+                disc.rotation.z = Math.PI / 2; // Stand upright
                 coinGroup.add(disc);
                 
-                // Coin rim (slightly darker ring)
-                const rimGeo = new THREE.TorusGeometry(0.48, 0.04, 8, 24);
-                const rimMat = new THREE.MeshPhongMaterial({ color: 0xdaa520 });
-                const rim = new THREE.Mesh(rimGeo, rimMat);
-                coinGroup.add(rim);
-                
-                // "OKR" text on both faces
+                // "OKR" text as a flat plane on front face
                 const textCanvas = document.createElement('canvas');
                 textCanvas.width = 128;
                 textCanvas.height = 128;
                 const tCtx = textCanvas.getContext('2d');
                 tCtx.clearRect(0, 0, 128, 128);
                 tCtx.fillStyle = '#b8860b';
-                tCtx.font = 'bold 48px Arial';
+                tCtx.font = 'bold 52px Arial';
                 tCtx.textAlign = 'center';
                 tCtx.textBaseline = 'middle';
                 tCtx.fillText('OKR', 64, 64);
                 
                 const textTexture = new THREE.CanvasTexture(textCanvas);
-                const textMat = new THREE.SpriteMaterial({ map: textTexture, transparent: true });
+                const textGeo = new THREE.PlaneGeometry(0.7, 0.7);
                 
-                // Front face text
-                const frontText = new THREE.Sprite(textMat);
-                frontText.position.set(0, 0.09, 0);
-                frontText.scale.set(0.6, 0.6, 1);
-                frontText.rotation.x = -Math.PI / 2;
+                // Front text
+                const frontMat = new THREE.MeshBasicMaterial({ map: textTexture, transparent: true });
+                const frontText = new THREE.Mesh(textGeo, frontMat);
+                frontText.position.set(0.07, 0, 0);
+                frontText.rotation.y = Math.PI / 2;
                 coinGroup.add(frontText);
                 
-                // Back face text
-                const backText = new THREE.Sprite(textMat.clone());
-                backText.position.set(0, -0.09, 0);
-                backText.scale.set(0.6, 0.6, 1);
-                backText.rotation.x = Math.PI / 2;
+                // Back text
+                const backMat = new THREE.MeshBasicMaterial({ map: textTexture, transparent: true });
+                const backText = new THREE.Mesh(textGeo, backMat);
+                backText.position.set(-0.07, 0, 0);
+                backText.rotation.y = -Math.PI / 2;
                 coinGroup.add(backText);
                 
                 coinGroup.position.set(x, y, z);
@@ -1405,10 +1400,9 @@
                     return true;
                 });
                 
-                // Rotate OKRs + glow pulse + slight tilt
+                // Rotate OKRs + glow pulse
                 this.okrs.forEach(okr => {
                     okr.rotation.y += dt * 2;
-                    okr.rotation.z = Math.sin(this.gameTime * 1.5) * 0.15;
                     // Pulse glow on the disc mesh (first child)
                     const disc = okr.children && okr.children[0];
                     if (disc && disc.material) {
