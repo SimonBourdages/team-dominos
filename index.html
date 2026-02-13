@@ -775,6 +775,8 @@
             
             loadLevel(levelNum) {
                 this.levelCompleting = false;
+                this.liftAnimating = false;
+                this.levelStartTime = performance.now();
                 this.currentLevelData = this.levelConfigs[levelNum];
                 this.state.currentLevel = levelNum;
                 this.state.okrsCollected = 0;
@@ -1427,8 +1429,9 @@
                     );
                 }
                 
-                // HQ check - car lift animation
-                if (this.jrodHQ && !this.liftAnimating) {
+                // HQ check - car lift animation (2s cooldown after level load to prevent instant re-trigger)
+                const timeSinceLevelStart = performance.now() - (this.levelStartTime || 0);
+                if (this.jrodHQ && !this.liftAnimating && !this.levelCompleting && timeSinceLevelStart > 2000) {
                     const distToHQ = this.player.position.distanceTo(this.jrodHQ.position);
                     if (distToHQ < 5 && this.state.okrsCollected >= this.currentLevelData.okrGoal) {
                         this.playLiftAnimation();
@@ -2187,22 +2190,33 @@
             updatePhase3(dt) {
                 // Automation - mostly passive
                 let productionRate = 1; // Base rate: 1 OKR/sec always
+                let acRegenRate = 1;    // Base AC regen: 1/sec
+                let globalMult = 1;     // Multiplier nodes stack multiplicatively
                 
                 this.automationNodes.forEach(node => {
-                    productionRate += node.rate;
+                    if (node.mult && node.mult > 1) {
+                        globalMult *= node.mult; // Multipliers multiply everything
+                    } else if (node.acRate && node.acRate > 0) {
+                        acRegenRate += node.acRate; // Collectors boost AC regen
+                    } else {
+                        productionRate += node.rate; // Processors/Synthesizers add OKR/s
+                    }
                 });
                 
                 // AI workers contribute
-                const workerContribution = this.state.aiWorkers.length * 0.5;
-                productionRate += workerContribution;
+                productionRate += this.state.aiWorkers.length * 0.5;
+                
+                // Apply global multiplier to both rates
+                productionRate *= globalMult;
+                acRegenRate *= globalMult;
                 
                 // Auto-collect OKRs
                 const okrsThisFrame = productionRate * dt;
                 this.state.okrsCollected += okrsThisFrame;
                 this.state.totalOKRs += okrsThisFrame;
                 
-                // AC regenerates passively (faster with more nodes)
-                this.state.currencies.ac += (1 + this.automationNodes.length * 0.5) * dt;
+                // AC regenerates based on Collectors + base
+                this.state.currencies.ac += acRegenRate * dt;
                 
                 // Check completion
                 if (this.state.okrsCollected >= this.currentLevelData.okrGoal) {
@@ -2210,12 +2224,14 @@
                 }
                 
                 this.updateUI();
-                this.renderPhase3(productionRate);
+                this.renderPhase3(productionRate, acRegenRate, globalMult);
             }
             
-            renderPhase3(rate) {
+            renderPhase3(rate, acRate, mult) {
                 const ctx = this.ctx;
                 const canvas = this.canvas;
+                acRate = acRate || 1;
+                mult = mult || 1;
                 
                 // CRITICAL: Pixel-perfect rendering
                 ctx.imageSmoothingEnabled = false;
@@ -2250,69 +2266,73 @@
                 // Draw connections from each node back to central factory, then the nodes on top
                 this.automationNodes.forEach((node, i) => {
                     this.drawPixelConnection(node.x, node.y, centerX, centerY, node.name);
-                    this.drawPixelNode(node.x, node.y, node.rate, node.name);
+                    const label = node.acRate > 0 ? node.acRate : (node.mult > 1 ? node.mult : node.rate);
+                    this.drawPixelNode(node.x, node.y, label, node.name);
                 });
                 
-                // Draw central HUD overlay on top of factory
+                // Draw central HUD — compact, inside the box
+                const progress = Math.min(1, this.state.okrsCollected / this.currentLevelData.okrGoal);
+                const size = 130;
+                const boxTop = centerY - size/2;
+                const boxLeft = centerX - size/2;
                 
-                // Production rate display (pixel font style)
-                ctx.fillStyle = '#0ff';
-                ctx.font = 'bold 48px monospace';
-                ctx.textAlign = 'center';
-                ctx.fillText(`${Math.floor(rate)}/s`, Math.floor(centerX), Math.floor(centerY - 100));
+                // Dark box background
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+                ctx.fillRect(Math.floor(boxLeft), Math.floor(boxTop), size, size);
                 
-                // Pixel progress square
-                const progress = this.state.okrsCollected / this.currentLevelData.okrGoal;
-                const size = 120;
+                // Outer border
+                ctx.strokeStyle = 'rgba(0, 255, 255, 0.4)';
+                ctx.lineWidth = 4;
+                ctx.strokeRect(Math.floor(boxLeft), Math.floor(boxTop), size, size);
                 
-                // Outer square
-                ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
-                ctx.lineWidth = 6;
-                ctx.strokeRect(
-                    Math.floor(centerX - size/2), 
-                    Math.floor(centerY - size/2), 
-                    size, 
-                    size
-                );
-                
-                // Progress fill (pixelated)
+                // Progress fill from bottom
                 const fillHeight = Math.floor(size * progress);
-                ctx.fillStyle = '#0ff';
+                ctx.fillStyle = 'rgba(0, 255, 255, 0.15)';
                 ctx.fillRect(
-                    Math.floor(centerX - size/2 + 6),
-                    Math.floor(centerY + size/2 - fillHeight - 6),
-                    size - 12,
+                    Math.floor(boxLeft + 4),
+                    Math.floor(boxTop + size - fillHeight - 4),
+                    size - 8,
                     fillHeight
                 );
                 
-                // OKR count (pixel style)
-                ctx.fillStyle = '#fff';
-                ctx.font = 'bold 20px monospace';
-                ctx.fillText(
-                    `${this.formatNumber(this.state.okrsCollected)} / ${this.formatNumber(this.currentLevelData.okrGoal)}`,
-                    Math.floor(centerX),
-                    Math.floor(centerY + 10)
-                );
+                // Big percentage in center
+                ctx.fillStyle = '#0ff';
+                ctx.font = 'bold 36px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(`${Math.floor(progress * 100)}%`, Math.floor(centerX), Math.floor(centerY + 8));
                 
-                // AC balance and help text
+                // "OKR Factory" label above box
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 14px monospace';
+                ctx.fillText('OKR FACTORY', Math.floor(centerX), Math.floor(boxTop - 8));
+                
+                // Stats row below box
+                const belowY = boxTop + size + 20;
+                ctx.font = 'bold 16px monospace';
+                ctx.fillStyle = '#0ff';
+                ctx.fillText(`${Math.floor(rate)} OKR/s`, Math.floor(centerX - 100), Math.floor(belowY));
+                ctx.fillStyle = '#22cc44';
+                ctx.fillText(`${acRate.toFixed(1)} AC/s`, Math.floor(centerX), Math.floor(belowY));
                 ctx.fillStyle = '#ffcc00';
-                ctx.font = 'bold 24px monospace';
+                ctx.fillText(`AC: ${Math.floor(this.state.currencies.ac)}`, Math.floor(centerX + 100), Math.floor(belowY));
+                
+                if (mult > 1) {
+                    ctx.fillStyle = '#dd88ff';
+                    ctx.fillText(`x${mult.toFixed(1)} mult`, Math.floor(centerX), Math.floor(belowY + 20));
+                }
+                
+                // Help text
+                ctx.fillStyle = '#666';
+                ctx.font = '12px monospace';
                 ctx.fillText(
-                    `AC: ${Math.floor(this.state.currencies.ac)}`,
+                    'Click to place buildings. Collectors → AC | Multipliers → all rates',
                     Math.floor(centerX),
-                    Math.floor(centerY + size/2 + 40)
-                );
-                ctx.fillStyle = '#888';
-                ctx.font = '14px monospace';
-                ctx.fillText(
-                    'AC regenerates over time. Click canvas to place automation buildings.',
-                    Math.floor(centerX),
-                    Math.floor(centerY + size/2 + 65)
+                    Math.floor(belowY + 42)
                 );
                 ctx.fillText(
                     `Nodes: ${this.automationNodes.length} | Workers: ${this.state.aiWorkers.length}`,
                     Math.floor(centerX),
-                    Math.floor(centerY + size/2 + 85)
+                    Math.floor(belowY + 58)
                 );
                 
                 // CRT scanlines effect
@@ -2320,6 +2340,37 @@
                 
                 // Draw spectators
                 this.drawPixelSpectators();
+            }
+            
+            drawOKRFactory(cx, cy) {
+                const ctx = this.ctx;
+                const s = 4;
+                const pulse = Math.sin(this.gameTime * 2) * 0.1 + 0.9;
+                
+                // Outer glow
+                ctx.fillStyle = `rgba(0, 255, 255, ${0.08 * pulse})`;
+                ctx.beginPath(); ctx.arc(cx, cy, 80, 0, Math.PI * 2); ctx.fill();
+                
+                // Factory base (pixel chimney shape)
+                this._pxRect(ctx, cx - 8*s, cy + 4*s, 16*s, 3*s, '#334');
+                // Main building
+                this._pxRect(ctx, cx - 6*s, cy - 2*s, 12*s, 6*s, '#445');
+                // Chimney left
+                this._pxRect(ctx, cx - 5*s, cy - 5*s, 3*s, 3*s, '#556');
+                // Chimney right
+                this._pxRect(ctx, cx + 2*s, cy - 5*s, 3*s, 3*s, '#556');
+                // Smoke puffs (animated)
+                const smokeT = this.gameTime * 1.5;
+                ctx.fillStyle = 'rgba(150,150,170,0.3)';
+                ctx.beginPath(); ctx.arc(cx - 3.5*s, cy - 6*s - (smokeT % 3) * 4, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(cx + 3.5*s, cy - 6*s - ((smokeT + 1) % 3) * 4, 4, 0, Math.PI * 2); ctx.fill();
+                // Windows (glowing)
+                const winGlow = pulse > 0.95 ? '#0ff' : '#088';
+                this._pxRect(ctx, cx - 4*s, cy - 1*s, 2*s, 2*s, winGlow);
+                this._pxRect(ctx, cx + 2*s, cy - 1*s, 2*s, 2*s, winGlow);
+                this._pxRect(ctx, cx - 1*s, cy + 1*s, 2*s, 2*s, winGlow);
+                // Door
+                this._pxRect(ctx, cx - 1*s, cy + 3*s, 2*s, 3*s, '#222');
             }
             
             drawPixelNode(x, y, rate, name) {
@@ -2437,10 +2488,18 @@
                 ctx.font = 'bold 10px monospace';
                 ctx.textAlign = 'center';
                 ctx.fillText(name, bx, by + 32);
-                // Rate text
-                ctx.fillStyle = '#aaffaa';
+                // Rate text — context-aware
                 ctx.font = 'bold 12px monospace';
-                ctx.fillText(`+${rate}/s`, bx, by + 44);
+                if (name === 'Collector') {
+                    ctx.fillStyle = '#66ff88';
+                    ctx.fillText(`+${rate} AC/s`, bx, by + 44);
+                } else if (name === 'Multiplier') {
+                    ctx.fillStyle = '#dd88ff';
+                    ctx.fillText(`x${rate}`, bx, by + 44);
+                } else {
+                    ctx.fillStyle = '#aaffaa';
+                    ctx.fillText(`+${rate} OKR/s`, bx, by + 44);
+                }
             }
             
             _pxRect(ctx, x, y, w, h, color) {
@@ -2559,9 +2618,8 @@
                         // Animation done — complete the level
                         setTimeout(() => {
                             this.paused = false;
+                            this.liftAnimating = false;
                             this.completeLevel();
-                            // Reset liftAnimating AFTER loadLevel runs
-                            setTimeout(() => { this.liftAnimating = false; }, 500);
                         }, 500);
                     }
                 };
