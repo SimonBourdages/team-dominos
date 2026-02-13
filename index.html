@@ -961,6 +961,111 @@
                 platform.userData.isPlatform = true;
                 this.scene.add(platform);
                 this.platforms.push(platform);
+                
+                // Add Domino's logo to large ground platforms (green, 20x20)
+                if (color === 0x228b22 && width >= 20) {
+                    this.addDominosLogo(platform, width, depth);
+                }
+            }
+            
+            addDominosLogo(platform, w, d) {
+                const size = 512;
+                const c = document.createElement('canvas');
+                c.width = size; c.height = size;
+                const ctx = c.getContext('2d');
+                
+                // Transparent background
+                ctx.clearRect(0, 0, size, size);
+                
+                const cx = size / 2, cy = size / 2;
+                
+                // Domino tile shape (tilted 45°)
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.rotate(Math.PI / 4);
+                
+                // Blue square domino tile
+                const tileW = 160, tileH = 280;
+                const r = 18;
+                ctx.beginPath();
+                ctx.moveTo(-tileW/2 + r, -tileH/2);
+                ctx.lineTo(tileW/2 - r, -tileH/2);
+                ctx.quadraticCurveTo(tileW/2, -tileH/2, tileW/2, -tileH/2 + r);
+                ctx.lineTo(tileW/2, tileH/2 - r);
+                ctx.quadraticCurveTo(tileW/2, tileH/2, tileW/2 - r, tileH/2);
+                ctx.lineTo(-tileW/2 + r, tileH/2);
+                ctx.quadraticCurveTo(-tileW/2, tileH/2, -tileW/2, tileH/2 - r);
+                ctx.lineTo(-tileW/2, -tileH/2 + r);
+                ctx.quadraticCurveTo(-tileW/2, -tileH/2, -tileW/2 + r, -tileH/2);
+                ctx.closePath();
+                ctx.fillStyle = '#0b5ca4';
+                ctx.fill();
+                
+                // Divider line
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(-tileW/2 + 10, 0);
+                ctx.lineTo(tileW/2 - 10, 0);
+                ctx.stroke();
+                
+                // Top half - red square with 1 dot
+                ctx.fillStyle = '#d50032';
+                const smallR = 12;
+                const inset = 14;
+                ctx.beginPath();
+                ctx.moveTo(-tileW/2 + inset + smallR, -tileH/2 + inset);
+                ctx.lineTo(tileW/2 - inset - smallR, -tileH/2 + inset);
+                ctx.quadraticCurveTo(tileW/2 - inset, -tileH/2 + inset, tileW/2 - inset, -tileH/2 + inset + smallR);
+                ctx.lineTo(tileW/2 - inset, -smallR);
+                ctx.quadraticCurveTo(tileW/2 - inset, -4, tileW/2 - inset - smallR, -4);
+                ctx.lineTo(-tileW/2 + inset + smallR, -4);
+                ctx.quadraticCurveTo(-tileW/2 + inset, -4, -tileW/2 + inset, -smallR);
+                ctx.lineTo(-tileW/2 + inset, -tileH/2 + inset + smallR);
+                ctx.quadraticCurveTo(-tileW/2 + inset, -tileH/2 + inset, -tileW/2 + inset + smallR, -tileH/2 + inset);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Dot on red half
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(0, -tileH/4, 14, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Bottom half dots (2 dots)
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(-30, tileH/4 - 20, 14, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(30, tileH/4 + 20, 14, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.restore();
+                
+                // "TEAM DOMINOS" text below the tile
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 52px Arial, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                ctx.fillText('TEAM', cx, cy + 130);
+                ctx.fillText('DOMINOS', cx, cy + 180);
+                
+                const texture = new THREE.CanvasTexture(c);
+                texture.needsUpdate = true;
+                const logoGeo = new THREE.PlaneGeometry(Math.min(w, d) * 0.8, Math.min(w, d) * 0.8);
+                const logoMat = new THREE.MeshBasicMaterial({ 
+                    map: texture, 
+                    transparent: true, 
+                    depthWrite: false,
+                    polygonOffset: true,
+                    polygonOffsetFactor: -1
+                });
+                const logoMesh = new THREE.Mesh(logoGeo, logoMat);
+                logoMesh.rotation.x = -Math.PI / 2;
+                logoMesh.position.y = platform.geometry.parameters.height / 2 + 0.01;
+                logoMesh.userData.isLevelObject = true;
+                platform.add(logoMesh);
             }
             
             createOKR(x, y, z) {
