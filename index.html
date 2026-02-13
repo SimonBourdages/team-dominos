@@ -947,19 +947,58 @@
             }
             
             createOKR(x, y, z) {
+                const coinGroup = new THREE.Group();
+                
+                // Coin disc
                 const geometry = new THREE.CylinderGeometry(0.5, 0.5, 0.15, 24);
                 const material = new THREE.MeshPhongMaterial({
                     color: 0xffd700,
                     emissive: 0xffaa00,
                     emissiveIntensity: 0.5
                 });
-                const okr = new THREE.Mesh(geometry, material);
-                okr.position.set(x, y, z);
-                okr.rotation.x = Math.PI / 2;
-                okr.userData.isLevelObject = true;
-                okr.userData.isOKR = true;
-                this.scene.add(okr);
-                this.okrs.push(okr);
+                const disc = new THREE.Mesh(geometry, material);
+                coinGroup.add(disc);
+                
+                // Coin rim (slightly darker ring)
+                const rimGeo = new THREE.TorusGeometry(0.48, 0.04, 8, 24);
+                const rimMat = new THREE.MeshPhongMaterial({ color: 0xdaa520 });
+                const rim = new THREE.Mesh(rimGeo, rimMat);
+                coinGroup.add(rim);
+                
+                // "OKR" text on both faces
+                const textCanvas = document.createElement('canvas');
+                textCanvas.width = 128;
+                textCanvas.height = 128;
+                const tCtx = textCanvas.getContext('2d');
+                tCtx.clearRect(0, 0, 128, 128);
+                tCtx.fillStyle = '#b8860b';
+                tCtx.font = 'bold 48px Arial';
+                tCtx.textAlign = 'center';
+                tCtx.textBaseline = 'middle';
+                tCtx.fillText('OKR', 64, 64);
+                
+                const textTexture = new THREE.CanvasTexture(textCanvas);
+                const textMat = new THREE.SpriteMaterial({ map: textTexture, transparent: true });
+                
+                // Front face text
+                const frontText = new THREE.Sprite(textMat);
+                frontText.position.set(0, 0.09, 0);
+                frontText.scale.set(0.6, 0.6, 1);
+                frontText.rotation.x = -Math.PI / 2;
+                coinGroup.add(frontText);
+                
+                // Back face text
+                const backText = new THREE.Sprite(textMat.clone());
+                backText.position.set(0, -0.09, 0);
+                backText.scale.set(0.6, 0.6, 1);
+                backText.rotation.x = Math.PI / 2;
+                coinGroup.add(backText);
+                
+                coinGroup.position.set(x, y, z);
+                coinGroup.userData.isLevelObject = true;
+                coinGroup.userData.isOKR = true;
+                this.scene.add(coinGroup);
+                this.okrs.push(coinGroup);
             }
             
             loadSpectators3D(levelNum) {
@@ -984,19 +1023,97 @@
             
             createSpectator3D(name, color, x, z, quote) {
                 const mesh = new THREE.Group();
+                const skinColor = 0xffdbac;
                 
-                // Body
-                const bodyGeometry = new THREE.BoxGeometry(0.8, 1.5, 0.6);
+                // Legs
+                const legMat = new THREE.MeshLambertMaterial({ color: 0x2244aa });
+                const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.7, 0.25), legMat);
+                leftLeg.position.set(-0.15, -0.35, 0);
+                mesh.add(leftLeg);
+                const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.7, 0.25), legMat);
+                rightLeg.position.set(0.15, -0.35, 0);
+                mesh.add(rightLeg);
+                
+                // Shoes
+                const shoeMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
+                const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.12, 0.35), shoeMat);
+                leftShoe.position.set(-0.15, -0.75, 0.05);
+                mesh.add(leftShoe);
+                const rightShoe = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.12, 0.35), shoeMat);
+                rightShoe.position.set(0.15, -0.75, 0.05);
+                mesh.add(rightShoe);
+                
+                // Body (shirt color = team color)
                 const bodyMaterial = new THREE.MeshLambertMaterial({ color: color });
-                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.0, 0.45), bodyMaterial);
+                body.position.set(0, 0.5, 0);
                 body.castShadow = true;
+                mesh.add(body);
+                
+                // Collar
+                const collarMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+                const collar = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.3), collarMat);
+                collar.position.set(0, 0.95, 0.1);
+                mesh.add(collar);
+                
+                // Arms
+                const armMat = new THREE.MeshLambertMaterial({ color: color });
+                const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 0.2), armMat);
+                leftArm.position.set(-0.45, 0.5, 0);
+                leftArm.name = 'leftArm';
+                mesh.add(leftArm);
+                const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 0.2), armMat);
+                rightArm.position.set(0.45, 0.5, 0);
+                rightArm.name = 'rightArm';
+                mesh.add(rightArm);
+                
+                // Hands
+                const handMat = new THREE.MeshLambertMaterial({ color: skinColor });
+                const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), handMat);
+                leftHand.position.set(-0.45, 0.05, 0);
+                mesh.add(leftHand);
+                const rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), handMat);
+                rightHand.position.set(0.45, 0.05, 0);
+                mesh.add(rightHand);
                 
                 // Head
-                const headGeometry = new THREE.BoxGeometry(0.6, 0.6, 0.6);
-                const headMaterial = new THREE.MeshLambertMaterial({ color: 0xffdbac });
-                const head = new THREE.Mesh(headGeometry, headMaterial);
-                head.position.y = 1.2;
+                const headMaterial = new THREE.MeshLambertMaterial({ color: skinColor });
+                const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 12), headMaterial);
+                head.position.y = 1.35;
                 head.castShadow = true;
+                mesh.add(head);
+                
+                // Hair (random style per person)
+                const hairColor = [0x442200, 0x222222, 0x8B4513, 0xDAA520, 0x2F1B14][name.length % 5];
+                const hairMat = new THREE.MeshLambertMaterial({ color: hairColor });
+                const hair = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.32, 12, 12, 0, Math.PI * 2, 0, Math.PI * 0.55),
+                    hairMat
+                );
+                hair.position.y = 1.42;
+                mesh.add(hair);
+                
+                // Eyes
+                const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+                const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                const leWhite = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeWhiteMat);
+                leWhite.position.set(-0.1, 1.38, 0.26);
+                mesh.add(leWhite);
+                const reWhite = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeWhiteMat);
+                reWhite.position.set(0.1, 1.38, 0.26);
+                mesh.add(reWhite);
+                const le = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), eyeMat);
+                le.position.set(-0.1, 1.38, 0.3);
+                mesh.add(le);
+                const re = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), eyeMat);
+                re.position.set(0.1, 1.38, 0.3);
+                mesh.add(re);
+                
+                // Mouth (smile)
+                const smileMat = new THREE.MeshBasicMaterial({ color: 0xcc6666 });
+                const smile = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.03, 0.02), smileMat);
+                smile.position.set(0, 1.28, 0.29);
+                mesh.add(smile);
                 
                 // Nameplate
                 const nameCanvas = document.createElement('canvas');
@@ -1021,10 +1138,8 @@
                 const nameSprite = new THREE.Sprite(nameMaterial);
                 nameSprite.position.y = 2.0;
                 nameSprite.scale.set(2.5, 0.6, 1);
-                
-                mesh.add(body);
-                mesh.add(head);
                 mesh.add(nameSprite);
+                
                 mesh.position.set(x, 0.75, z);
                 mesh.userData.isLevelObject = true;
                 
@@ -1209,8 +1324,12 @@
                     this.playerVelocity.x = moveX * speed * sprint;
                     this.playerVelocity.z = moveZ * speed * sprint;
                     
-                    // Rotate car to face movement direction instantly
-                    this.player.rotation.y = Math.atan2(moveX, moveZ);
+                    // Rotate car to face movement direction (smooth)
+                    const targetAngle = Math.atan2(moveX, moveZ);
+                    let angleDiff = targetAngle - this.player.rotation.y;
+                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                    this.player.rotation.y += angleDiff * 0.25;
                 } else {
                     // Friction when not pressing keys
                     this.playerVelocity.x *= 0.85;
@@ -1274,11 +1393,14 @@
                     return true;
                 });
                 
-                // Rotate OKRs + glow pulse
+                // Rotate OKRs + glow pulse + slight tilt
                 this.okrs.forEach(okr => {
                     okr.rotation.y += dt * 2;
-                    if (okr.material) {
-                        okr.material.emissiveIntensity = 0.3 + Math.sin(this.gameTime * 4) * 0.3;
+                    okr.rotation.z = Math.sin(this.gameTime * 1.5) * 0.15;
+                    // Pulse glow on the disc mesh (first child)
+                    const disc = okr.children && okr.children[0];
+                    if (disc && disc.material) {
+                        disc.material.emissiveIntensity = 0.3 + Math.sin(this.gameTime * 4) * 0.3;
                     }
                 });
                 
@@ -1315,12 +1437,22 @@
                 this.camera.position.z = this.player.position.z + this.cameraOffset.z;
                 this.camera.lookAt(this.player.position);
                 
-                // Animate spectators
+                // Animate spectators (idle sway + arm wave)
                 this.currentLevelSpectators.forEach(spec => {
                     if (spec.mesh) {
                         spec.animTime += dt;
-                        spec.mesh.rotation.z = Math.sin(spec.animTime) * 0.1;
-                        spec.mesh.position.y = spec.baseY + Math.sin(spec.animTime * 2) * 0.1;
+                        spec.mesh.rotation.z = Math.sin(spec.animTime * 0.8) * 0.05;
+                        spec.mesh.position.y = spec.baseY + Math.sin(spec.animTime * 1.5) * 0.05;
+                        
+                        // Wave arms
+                        spec.mesh.traverse(child => {
+                            if (child.name === 'rightArm') {
+                                child.rotation.z = Math.sin(spec.animTime * 3) * 0.4;
+                            }
+                            if (child.name === 'leftArm') {
+                                child.rotation.z = Math.sin(spec.animTime * 3 + 1) * -0.2;
+                            }
+                        });
                     }
                 });
                 
@@ -1980,9 +2112,10 @@
                     } else {
                         // Animation done — complete the level
                         setTimeout(() => {
-                            this.liftAnimating = false;
                             this.paused = false;
                             this.completeLevel();
+                            // Reset liftAnimating AFTER loadLevel runs
+                            setTimeout(() => { this.liftAnimating = false; }, 500);
                         }, 500);
                     }
                 };
