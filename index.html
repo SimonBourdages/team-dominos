@@ -172,7 +172,6 @@
             left: 50%;
             transform: translate(-50%, -50%);
             background: rgba(0, 0, 0, 0.95);
-            display: block;
             padding: 40px;
             border: 3px solid #0ff;
             border-radius: 10px;
@@ -310,8 +309,9 @@
         <p>🎮 Levels 1-5: Manual Platforming</p>
         <p>🤖 Levels 6-10: AI Management</p>
         <p>⚡ Levels 11-15: Full Automation</p>
-        <button onclick="game.startGame()" style="margin-top: 20px;">START GAME</button>
-        <button onclick="game.loadGame()">LOAD GAME</button>
+        <button onclick="game.startGame()" style="margin-top: 20px;">NEW GAME</button>
+        <button onclick="game.loadGame()">CONTINUE</button>
+        <button onclick="game.clearSave()" style="font-size: 12px; background: #600; margin-top: 10px;">CLEAR SAVE DATA</button>
     </div>
     
     <div id="cutscene">
@@ -478,10 +478,12 @@
             }
             
             setupPhase1() {
+                console.log('Setting up Phase 1 - 3D mode');
                 // Initialize Three.js
                 this.scene = new THREE.Scene();
                 this.scene.background = new THREE.Color(0x87ceeb);
                 this.scene.fog = new THREE.Fog(0x87ceeb, 50, 200);
+                console.log('Scene created');
                 
                 this.camera = new THREE.PerspectiveCamera(
                     60,
@@ -490,6 +492,7 @@
                     1000
                 );
                 this.camera.position.set(0, 5, 10);
+                this.camera.lookAt(0, 0, 0);
                 
                 this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -511,13 +514,120 @@
                 dirLight.shadow.mapSize.height = 2048;
                 this.scene.add(dirLight);
                 
-                // Create player
-                const playerGeometry = new THREE.BoxGeometry(1, 2, 1);
-                const playerMaterial = new THREE.MeshPhongMaterial({ color: 0x00ffff });
-                this.player = new THREE.Mesh(playerGeometry, playerMaterial);
-                this.player.position.set(0, 2, 0);
-                this.player.castShadow = true;
+                // Hemisphere light (sky/ground color blend)
+                const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x228b22, 0.4);
+                this.scene.add(hemiLight);
+                
+                // Car headlight (moves with player)
+                this.playerLight = new THREE.SpotLight(0xffffcc, 1.5, 30, Math.PI / 6, 0.3);
+                this.playerLight.position.set(0, 1, 2);
+                this.playerLight.castShadow = true;
+                
+                // Warm rim light from behind
+                this.rimLight = new THREE.PointLight(0xff8844, 0.6, 15);
+                this.rimLight.position.set(0, 3, -5);
+                
+                // Create player - character in a small car
+                const playerGroup = new THREE.Group();
+                const carBodyMat = new THREE.MeshPhongMaterial({ color: 0xe21a2c });
+                const metalMat = new THREE.MeshPhongMaterial({ color: 0x888888 });
+                const glassMat = new THREE.MeshPhongMaterial({ color: 0x88ccff, transparent: true, opacity: 0.6 });
+                const tireMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
+                const skinMat = new THREE.MeshPhongMaterial({ color: 0xffcc99 });
+                const hairMat = new THREE.MeshPhongMaterial({ color: 0x442200 });
+                
+                // Car body (lower)
+                const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.4, 2.2), carBodyMat);
+                chassis.position.set(0, 0.35, 0);
+                playerGroup.add(chassis);
+                
+                // Car cabin (upper)
+                const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 1.2), carBodyMat);
+                cabin.position.set(0, 0.75, -0.1);
+                playerGroup.add(cabin);
+                
+                // Windshield
+                const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.45, 0.05), glassMat);
+                windshield.position.set(0, 0.78, 0.52);
+                windshield.rotation.x = -0.2;
+                playerGroup.add(windshield);
+                
+                // Rear window
+                const rearWindow = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.4, 0.05), glassMat);
+                rearWindow.position.set(0, 0.78, -0.72);
+                rearWindow.rotation.x = 0.2;
+                playerGroup.add(rearWindow);
+                
+                // Wheels
+                const wheelGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.15, 12);
+                const hubGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.16, 8);
+                const hubMat = new THREE.MeshPhongMaterial({ color: 0xcccccc });
+                
+                const wheelPositions = [
+                    [-0.7, 0.2, 0.65], [0.7, 0.2, 0.65],
+                    [-0.7, 0.2, -0.65], [0.7, 0.2, -0.65]
+                ];
+                wheelPositions.forEach(pos => {
+                    const wheel = new THREE.Mesh(wheelGeo, tireMat);
+                    wheel.rotation.z = Math.PI / 2;
+                    wheel.position.set(pos[0], pos[1], pos[2]);
+                    playerGroup.add(wheel);
+                    const hub = new THREE.Mesh(hubGeo, hubMat);
+                    hub.rotation.z = Math.PI / 2;
+                    hub.position.set(pos[0], pos[1], pos[2]);
+                    playerGroup.add(hub);
+                });
+                
+                // Headlights
+                const headlightMat = new THREE.MeshPhongMaterial({ color: 0xffffaa, emissive: 0xffffaa, emissiveIntensity: 0.8 });
+                const hlGeo = new THREE.SphereGeometry(0.1, 8, 8);
+                const hl1 = new THREE.Mesh(hlGeo, headlightMat);
+                hl1.position.set(-0.45, 0.4, 1.1);
+                playerGroup.add(hl1);
+                const hl2 = new THREE.Mesh(hlGeo, headlightMat);
+                hl2.position.set(0.45, 0.4, 1.1);
+                playerGroup.add(hl2);
+                
+                // Bumper
+                const bumper = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.12, 0.1), metalMat);
+                bumper.position.set(0, 0.2, 1.12);
+                playerGroup.add(bumper);
+                
+                // Driver head (visible above cabin)
+                const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 10), skinMat);
+                head.position.set(0, 1.15, 0);
+                playerGroup.add(head);
+                
+                // Driver hair
+                const hair = new THREE.Mesh(new THREE.SphereGeometry(0.21, 10, 10, 0, Math.PI * 2, 0, Math.PI / 2), hairMat);
+                hair.position.set(0, 1.2, 0);
+                playerGroup.add(hair);
+                
+                // Eyes
+                const eyeMat = new THREE.MeshPhongMaterial({ color: 0x000000 });
+                const le = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), eyeMat);
+                le.position.set(-0.08, 1.17, 0.18);
+                playerGroup.add(le);
+                const re = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), eyeMat);
+                re.position.set(0.08, 1.17, 0.18);
+                playerGroup.add(re);
+                
+                playerGroup.traverse(child => { child.castShadow = true; });
+                playerGroup.position.set(0, 2, 0);
+                this.player = playerGroup;
                 this.scene.add(this.player);
+                
+                // Attach lights to scene (follow player in update loop)
+                this.scene.add(this.playerLight);
+                this.scene.add(this.playerLight.target);
+                this.scene.add(this.rimLight);
+                
+                console.log('Three.js setup complete', {
+                    scene: this.scene,
+                    camera: this.camera,
+                    renderer: this.renderer,
+                    player: this.player
+                });
             }
             
             disposeThreeJS() {
@@ -621,6 +731,7 @@
             }
             
             loadLevel(levelNum) {
+                this.levelCompleting = false;
                 this.currentLevelData = this.levelConfigs[levelNum];
                 this.state.currentLevel = levelNum;
                 this.state.okrsCollected = 0;
@@ -689,12 +800,12 @@
                         this.createPlatform(5, i * 3 + 1, 0, 4, 1, 4, 0x8b4513);
                     }
                 } else if (levelNum === 5) {
-                    // Boss level
+                    // Boss level - spiral staircase (tighter radius, bigger platforms)
                     for (let i = 0; i < 8; i++) {
                         const angle = (i / 8) * Math.PI * 2;
-                        const x = Math.cos(angle) * 15;
-                        const z = Math.sin(angle) * 15;
-                        this.createPlatform(x, i * 2, z, 4, 1, 4, 0x8b4513);
+                        const x = Math.cos(angle) * 8;
+                        const z = Math.sin(angle) * 8;
+                        this.createPlatform(x, i * 1.5, z, 5, 1, 5, 0x8b4513);
                     }
                 }
                 
@@ -718,14 +829,80 @@
                     this.createOKR(pos.x, pos.y, pos.z);
                 }
                 
-                // Create Jrod HQ
-                const hqGeometry = new THREE.BoxGeometry(5, 8, 5);
-                const hqMaterial = new THREE.MeshPhongMaterial({ color: 0xffd700 });
-                this.jrodHQ = new THREE.Mesh(hqGeometry, hqMaterial);
-                this.jrodHQ.position.set(30 + levelNum * 5, 4, 0);
-                this.jrodHQ.castShadow = true;
+                // Create Jrod HQ - Garage goal
+                const lastPlatform = this.platforms[this.platforms.length - 1];
+                const hqX = lastPlatform ? lastPlatform.position.x + 8 : 25;
+                
+                const garageGroup = new THREE.Group();
+                const wallMat = new THREE.MeshPhongMaterial({ color: 0x8B4513 });
+                const roofMat = new THREE.MeshPhongMaterial({ color: 0x555555 });
+                const doorMat = new THREE.MeshPhongMaterial({ color: 0xcccccc, emissive: 0x333333, emissiveIntensity: 0.2 });
+                
+                // Back wall
+                const backWall = new THREE.Mesh(new THREE.BoxGeometry(6, 4, 0.3), wallMat);
+                backWall.position.set(0, 2, -2.5);
+                garageGroup.add(backWall);
+                
+                // Left wall
+                const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.3, 4, 5), wallMat);
+                sideWall.position.set(-3, 2, 0);
+                garageGroup.add(sideWall);
+                
+                // Right wall
+                const rightWall = sideWall.clone();
+                rightWall.position.set(3, 2, 0);
+                garageGroup.add(rightWall);
+                
+                // Roof
+                const roofShape = new THREE.Shape();
+                roofShape.moveTo(-3.5, 0);
+                roofShape.lineTo(0, 2);
+                roofShape.lineTo(3.5, 0);
+                roofShape.lineTo(-3.5, 0);
+                const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth: 5.5, bevelEnabled: false });
+                const roof = new THREE.Mesh(roofGeo, roofMat);
+                roof.position.set(0, 4, -2.75);
+                garageGroup.add(roof);
+                
+                // Garage door (open, tilted up)
+                const door = new THREE.Mesh(new THREE.BoxGeometry(5, 0.2, 3.5), doorMat);
+                door.position.set(0, 3.8, 2.5);
+                garageGroup.add(door);
+                
+                // Door panels (horizontal lines)
+                for (let i = 0; i < 4; i++) {
+                    const panel = new THREE.Mesh(new THREE.BoxGeometry(5, 0.02, 0.02), new THREE.MeshPhongMaterial({ color: 0x999999 }));
+                    panel.position.set(0, 3.85, 1.5 + i * 0.8);
+                    garageGroup.add(panel);
+                }
+                
+                // Floor (concrete)
+                const floor = new THREE.Mesh(new THREE.BoxGeometry(6, 0.1, 5), new THREE.MeshPhongMaterial({ color: 0xaaaaaa }));
+                floor.position.set(0, 0.05, 0);
+                garageGroup.add(floor);
+                
+                // Light above door
+                const light = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), new THREE.MeshPhongMaterial({ color: 0xffff00, emissive: 0xffff00, emissiveIntensity: 1 }));
+                light.position.set(0, 3.9, 2.6);
+                garageGroup.add(light);
+                
+                // Point light for glow
+                const glow = new THREE.PointLight(0xffff00, 0.5, 8);
+                glow.position.set(0, 3.5, 2.5);
+                garageGroup.add(glow);
+                
+                garageGroup.position.set(hqX, 0, 0);
+                garageGroup.traverse(child => {
+                    child.castShadow = true;
+                    child.userData.isLevelObject = true;
+                });
+                
+                this.jrodHQ = garageGroup;
                 this.jrodHQ.userData.isLevelObject = true;
                 this.scene.add(this.jrodHQ);
+                
+                // Platform under HQ so player can reach it
+                this.createPlatform(hqX, 0, 0, 6, 1, 6, 0x228b22);
                 
                 // Add spectators for this level
                 this.loadSpectators3D(levelNum);
@@ -745,7 +922,7 @@
             }
             
             createOKR(x, y, z) {
-                const geometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+                const geometry = new THREE.CylinderGeometry(0.5, 0.5, 0.15, 24);
                 const material = new THREE.MeshPhongMaterial({
                     color: 0xffd700,
                     emissive: 0xffaa00,
@@ -753,6 +930,7 @@
                 });
                 const okr = new THREE.Mesh(geometry, material);
                 okr.position.set(x, y, z);
+                okr.rotation.x = Math.PI / 2;
                 okr.userData.isLevelObject = true;
                 okr.userData.isOKR = true;
                 this.scene.add(okr);
@@ -795,8 +973,33 @@
                 head.position.y = 1.2;
                 head.castShadow = true;
                 
+                // Nameplate
+                const nameCanvas = document.createElement('canvas');
+                nameCanvas.width = 256;
+                nameCanvas.height = 64;
+                const nCtx = nameCanvas.getContext('2d');
+                nCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                nCtx.roundRect(4, 4, 248, 56, 8);
+                nCtx.fill();
+                nCtx.strokeStyle = color;
+                nCtx.lineWidth = 2;
+                nCtx.roundRect(4, 4, 248, 56, 8);
+                nCtx.stroke();
+                nCtx.fillStyle = '#ffffff';
+                nCtx.font = 'bold 24px Arial';
+                nCtx.textAlign = 'center';
+                nCtx.textBaseline = 'middle';
+                nCtx.fillText(name, 128, 32);
+                
+                const nameTexture = new THREE.CanvasTexture(nameCanvas);
+                const nameMaterial = new THREE.SpriteMaterial({ map: nameTexture, transparent: true });
+                const nameSprite = new THREE.Sprite(nameMaterial);
+                nameSprite.position.y = 2.0;
+                nameSprite.scale.set(2.5, 0.6, 1);
+                
                 mesh.add(body);
                 mesh.add(head);
+                mesh.add(nameSprite);
                 mesh.position.set(x, 0.75, z);
                 mesh.userData.isLevelObject = true;
                 
@@ -1026,10 +1229,32 @@
                     return true;
                 });
                 
-                // Rotate OKRs
+                // Rotate OKRs + glow pulse
                 this.okrs.forEach(okr => {
                     okr.rotation.y += dt * 2;
+                    if (okr.material) {
+                        okr.material.emissiveIntensity = 0.3 + Math.sin(this.gameTime * 4) * 0.3;
+                    }
                 });
+                
+                // Update lights to follow player
+                if (this.playerLight) {
+                    this.playerLight.position.set(
+                        this.player.position.x,
+                        this.player.position.y + 1.5,
+                        this.player.position.z + 2
+                    );
+                    this.playerLight.target.position.set(
+                        this.player.position.x,
+                        this.player.position.y,
+                        this.player.position.z + 10
+                    );
+                    this.rimLight.position.set(
+                        this.player.position.x,
+                        this.player.position.y + 3,
+                        this.player.position.z - 5
+                    );
+                }
                 
                 // HQ check
                 if (this.jrodHQ) {
@@ -1666,6 +1891,9 @@
             }
             
             completeLevel() {
+                if (this.levelCompleting) return;
+                this.levelCompleting = true;
+                
                 const config = this.currentLevelData;
                 
                 // Make spectators react to completion
@@ -1700,6 +1928,7 @@
                     this.showVictoryScreen();
                 } else {
                     // Next level
+                    console.log(`Level ${this.state.currentLevel} complete! Loading level ${this.state.currentLevel + 1}`);
                     setTimeout(() => {
                         this.loadLevel(this.state.currentLevel + 1);
                     }, 1000);
@@ -1830,11 +2059,6 @@
                 
                 showMessage();
             }
-                    }
-                };
-                
-                showMessage();
-            }
             
             showVictoryScreen() {
                 this.paused = true;
@@ -1938,6 +2162,11 @@
             saveGame() {
                 localStorage.setItem('teamDominosGame', JSON.stringify(this.state));
                 console.log('Game saved!');
+            }
+            
+            clearSave() {
+                localStorage.removeItem('teamDominosGame');
+                alert('Save data cleared! Click NEW GAME to start fresh.');
             }
             
             loadGame() {
