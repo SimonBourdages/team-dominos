@@ -246,10 +246,112 @@
             background: #f00;
             box-shadow: 0 0 10px #f00;
         }
+
+        #levelComplete {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+
+        #levelComplete .lc-title {
+            font-size: 48px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #ffd700, #ffaa00, #ffd700);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: none;
+            margin-bottom: 20px;
+        }
+
+        #levelComplete .lc-stars {
+            font-size: 48px;
+            margin: 16px 0;
+            display: flex;
+            gap: 12px;
+        }
+
+        #levelComplete .lc-star {
+            opacity: 0;
+            transform: scale(0);
+            display: inline-block;
+        }
+
+        #levelComplete .lc-star.pop {
+            animation: starPop 0.5s ease forwards;
+        }
+
+        @keyframes starPop {
+            0%   { opacity: 0; transform: scale(0); }
+            60%  { opacity: 1; transform: scale(1.4); }
+            80%  { transform: scale(0.9); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        #levelComplete .lc-info {
+            font-size: 20px;
+            margin: 8px 0;
+            color: #ccc;
+        }
+
+        #levelComplete .lc-info span {
+            color: #ffd700;
+        }
+
+        #levelComplete .lc-continue {
+            margin-top: 28px;
+            font-size: 20px;
+            padding: 14px 48px;
+            background: #0ff;
+            color: #000;
+            border: none;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        #levelComplete .lc-continue:hover {
+            background: #0dd;
+            transform: scale(1.05);
+        }
+        .tutorial-hint {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            color: #0ff;
+            font-family: 'Courier New', monospace;
+            font-size: 18px;
+            font-weight: bold;
+            padding: 14px 28px;
+            border: 2px solid #0ff;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.4), inset 0 0 10px rgba(0, 255, 255, 0.1);
+            z-index: 900;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+            text-align: center;
+            max-width: 500px;
+        }
+        .tutorial-hint.visible {
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
+    <div id="floatingTextOverlay" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:99;overflow:hidden;"></div>
     
     <div id="ui">
         <div id="stats">
@@ -393,12 +495,31 @@
                 this.currentLevelSpectators = [];
                 this.initSpectatorConfigs();
                 
+                // Combo system
+                this.comboCount = 0;
+                this.comboTimer = 0;
+                this.comboDisplayTimer = 0;
+                
+                // Floating texts
+                this.floatingTexts = [];
+                
+                // Screen shake
+                this.shakeIntensity = 0;
+                this.shakeDuration = 0;
+                
+                // Particles
+                this.particles = [];
+                
                 // Music system
                 this.audioCtx = null;
                 this.musicPlaying = false;
                 this.musicNodes = [];
                 this.initMusicConfigs();
                 
+                // Tutorial hint system
+                this.tutorialShown = {};
+                this.tutorialNoMoveTimer = 0;
+
                 this.setupEventListeners();
                 this.showMenu();
             }
@@ -624,6 +745,75 @@
                 }
             }
             
+            playSound(type) {
+                if (this.musicMuted) return;
+                if (!this.audioCtx) {
+                    try { this.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { return; }
+                }
+                if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+                const ctx = this.audioCtx;
+                const now = ctx.currentTime;
+
+                if (type === 'coin') {
+                    [523.25, 659.25, 783.99].forEach((freq, i) => {
+                        const o = ctx.createOscillator(), g = ctx.createGain();
+                        o.type = 'triangle'; o.frequency.value = freq;
+                        g.gain.setValueAtTime(0.15, now + i * 0.05);
+                        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.05 + 0.05);
+                        o.connect(g); g.connect(ctx.destination);
+                        o.start(now + i * 0.05); o.stop(now + i * 0.05 + 0.05);
+                    });
+                } else if (type === 'jump') {
+                    const o = ctx.createOscillator(), g = ctx.createGain();
+                    o.type = 'square';
+                    o.frequency.setValueAtTime(200, now);
+                    o.frequency.linearRampToValueAtTime(600, now + 0.1);
+                    g.gain.setValueAtTime(0.12, now);
+                    g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+                    o.connect(g); g.connect(ctx.destination);
+                    o.start(now); o.stop(now + 0.1);
+                } else if (type === 'land') {
+                    const o = ctx.createOscillator(), g = ctx.createGain();
+                    o.type = 'sine'; o.frequency.value = 80;
+                    g.gain.setValueAtTime(0.2, now);
+                    g.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+                    o.connect(g); g.connect(ctx.destination);
+                    o.start(now); o.stop(now + 0.05);
+                } else if (type === 'complete') {
+                    [261.63, 329.63, 392.00, 523.25].forEach((freq, i) => {
+                        const o = ctx.createOscillator(), g = ctx.createGain();
+                        o.type = 'triangle'; o.frequency.value = freq;
+                        g.gain.setValueAtTime(0.15, now + i * 0.2);
+                        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.2 + 0.2);
+                        o.connect(g); g.connect(ctx.destination);
+                        o.start(now + i * 0.2); o.stop(now + i * 0.2 + 0.2);
+                    });
+                } else if (type === 'click') {
+                    const o = ctx.createOscillator(), g = ctx.createGain();
+                    o.type = 'sine'; o.frequency.value = 800;
+                    g.gain.setValueAtTime(0.1, now);
+                    g.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+                    o.connect(g); g.connect(ctx.destination);
+                    o.start(now); o.stop(now + 0.03);
+                } else if (type === 'hire') {
+                    const o = ctx.createOscillator(), g = ctx.createGain();
+                    o.type = 'sawtooth';
+                    o.frequency.setValueAtTime(200, now);
+                    o.frequency.linearRampToValueAtTime(1000, now + 0.2);
+                    g.gain.setValueAtTime(0.12, now);
+                    g.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                    o.connect(g); g.connect(ctx.destination);
+                    o.start(now); o.stop(now + 0.2);
+                } else if (type === 'place') {
+                    const o = ctx.createOscillator(), g = ctx.createGain();
+                    o.type = 'sine'; o.frequency.value = 60;
+                    g.gain.setValueAtTime(0.2, now);
+                    g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+                    o.connect(g); g.connect(ctx.destination);
+                    o.start(now); o.stop(now + 0.1);
+                }
+            }
+
             setupEventListeners() {
                 window.addEventListener('keydown', (e) => {
                     this.keys[e.code] = true;
@@ -952,6 +1142,7 @@
                 const y = e.clientY - rect.top;
                 
                 if (this.state.currencies.ac >= this.selectedBuilding.cost) {
+                    this.playSound('place');
                     this.state.currencies.ac -= this.selectedBuilding.cost;
                     this.automationNodes.push({
                         x, y,
@@ -976,6 +1167,7 @@
                 // Clear existing objects
                 this.okrs = [];
                 this.platforms = [];
+                this.enemies = [];
                 this.jrodHQ = null;
                 
                 // Determine phase
@@ -1141,6 +1333,30 @@
                 // Platform under HQ so player can reach it
                 this.createPlatform(hqX, 0, 0, 6, 1, 6, 0x228b22);
                 
+                // Spawn enemies based on level
+                if (levelNum === 2) {
+                    this.createEnemy('email', 8, 1.5, 0);
+                    this.createEnemy('email', 16, 1.5, 0);
+                } else if (levelNum === 3) {
+                    this.createEnemy('email', 8, 2, 0);
+                    this.createEnemy('email', 14, 2, 0);
+                    this.createEnemy('email', 20, 2, 0);
+                    this.createEnemy('bug', 26, 3, 0);
+                } else if (levelNum === 4) {
+                    this.createEnemy('bug', 5, 5, 0);
+                    this.createEnemy('bug', 5, 11, 0);
+                } else if (levelNum === 5) {
+                    const a1 = (1 / 8) * Math.PI * 2;
+                    this.createEnemy('email', Math.cos(a1) * 8, 1.5 + 1, Math.sin(a1) * 8);
+                    const a4 = (4 / 8) * Math.PI * 2;
+                    this.createEnemy('email', Math.cos(a4) * 8, 6 + 1, Math.sin(a4) * 8);
+                    const a2 = (2 / 8) * Math.PI * 2;
+                    this.createEnemy('bug', Math.cos(a2) * 8, 3 + 1, Math.sin(a2) * 8);
+                    const a5 = (5 / 8) * Math.PI * 2;
+                    this.createEnemy('bug', Math.cos(a5) * 8, 7.5 + 1, Math.sin(a5) * 8);
+                    this.createEnemy('meeting', Math.cos(0) * 6, 10, Math.sin(0) * 6);
+                }
+                
                 // Add spectators for this level
                 this.loadSpectators3D(levelNum);
             }
@@ -1161,6 +1377,76 @@
                 if (color === 0x228b22 && width >= 20) {
                     this.addDominosLogo(platform, width, depth);
                 }
+            }
+            
+            createEnemy(type, x, y, z) {
+                let mesh;
+                if (type === 'email') {
+                    const group = new THREE.Group();
+                    const bodyMat = new THREE.MeshPhongMaterial({ color: 0xcc2222 });
+                    const body = new THREE.Mesh(new THREE.BoxGeometry(1, 0.7, 0.1), bodyMat);
+                    group.add(body);
+                    // Triangle flap on top
+                    const flapGeo = new THREE.BufferGeometry();
+                    const verts = new Float32Array([-0.5,0.35,0.06, 0.5,0.35,0.06, 0,0.7,0.06]);
+                    flapGeo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+                    flapGeo.computeVertexNormals();
+                    const flap = new THREE.Mesh(flapGeo, new THREE.MeshPhongMaterial({ color: 0xee4444, side: THREE.DoubleSide }));
+                    group.add(flap);
+                    group.position.set(x, y, z);
+                    mesh = group;
+                    mesh.userData.enemyType = 'email';
+                    mesh.userData.speed = 3;
+                    mesh.userData.dir = 1;
+                    mesh.userData.originX = x;
+                    mesh.userData.patrolRange = 3;
+                } else if (type === 'bug') {
+                    const group = new THREE.Group();
+                    const bugMat = new THREE.MeshPhongMaterial({ color: 0x22cc22 });
+                    const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), bugMat);
+                    group.add(sphere);
+                    const legMat = new THREE.MeshPhongMaterial({ color: 0x115511 });
+                    for (let i = -1; i <= 1; i += 2) {
+                        for (let j = -1; j <= 1; j += 2) {
+                            const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.4), legMat);
+                            leg.position.set(i * 0.25, -0.35, j * 0.2);
+                            group.add(leg);
+                        }
+                    }
+                    group.position.set(x, y, z);
+                    mesh = group;
+                    mesh.userData.enemyType = 'bug';
+                    mesh.userData.originY = y;
+                    mesh.userData.bounceAmp = 1.5;
+                    mesh.userData.bounceSpeed = 2 + Math.random();
+                    mesh.userData.phase = Math.random() * Math.PI * 2;
+                } else if (type === 'meeting') {
+                    const group = new THREE.Group();
+                    const cubeMat = new THREE.MeshPhongMaterial({ color: 0x8822cc });
+                    const cube = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), cubeMat);
+                    group.add(cube);
+                    // Clock face
+                    const face = new THREE.Mesh(new THREE.CircleGeometry(0.45, 16), new THREE.MeshPhongMaterial({ color: 0xffffff }));
+                    face.position.set(0, 0, 0.61);
+                    group.add(face);
+                    const handMat = new THREE.MeshPhongMaterial({ color: 0x000000 });
+                    const hour = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.25, 0.02), handMat);
+                    hour.position.set(0, 0.1, 0.62);
+                    group.add(hour);
+                    const minute = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.35, 0.02), handMat);
+                    minute.position.set(0.05, 0, 0.62);
+                    minute.rotation.z = -Math.PI / 3;
+                    group.add(minute);
+                    group.position.set(x, y, z);
+                    mesh = group;
+                    mesh.userData.enemyType = 'meeting';
+                    mesh.userData.speed = 1.5;
+                }
+                mesh.userData.isLevelObject = true;
+                mesh.userData.isEnemy = true;
+                this.scene.add(mesh);
+                this.enemies.push(mesh);
+                return mesh;
             }
             
             addDominosLogo(platform, w, d) {
@@ -1645,6 +1931,35 @@
             updatePhase1(dt) {
                 if (!this.player) return;
                 
+                // --- Tutorial triggers ---
+                const moving = this.keys['KeyW'] || this.keys['KeyS'] || this.keys['KeyA'] || this.keys['KeyD'];
+                if (this.state.currentLevel === 1 && !moving) {
+                    this.tutorialNoMoveTimer += dt;
+                    if (this.tutorialNoMoveTimer >= 2) this.showTutorialHint('move', 'Use WASD to drive your car!');
+                } else {
+                    this.tutorialNoMoveTimer = 0;
+                }
+                // Near platform edge hint
+                if (this.isGrounded && this.playerVelocity.y === 0) {
+                    for (const plat of this.platforms) {
+                        const pb = new THREE.Box3().setFromObject(plat);
+                        const px = this.player.position.x, pz = this.player.position.z;
+                        const nearEdge = Math.abs(px - pb.min.x) < 3 || Math.abs(px - pb.max.x) < 3 ||
+                                         Math.abs(pz - pb.min.z) < 3 || Math.abs(pz - pb.max.z) < 3;
+                        if (nearEdge) { this.showTutorialHint('jump', 'Press SPACE to jump!'); break; }
+                    }
+                }
+                // Near first OKR hint
+                if (this.okrs.length > 0) {
+                    const nearest = this.okrs.reduce((min, o) => Math.min(min, this.player.position.distanceTo(o.position)), Infinity);
+                    if (nearest < 5) this.showTutorialHint('collect', 'Drive into OKR coins to collect them!');
+                }
+                // All OKRs collected hint
+                if (this.currentLevelData && this.state.okrsCollected >= this.currentLevelData.okrGoal && this.okrs.length === 0) {
+                    this.showTutorialHint('goal', 'All OKRs collected! Drive to the Car Lift!');
+                }
+                // --- End tutorial triggers ---
+                
                 const speed = this.state.playerStats.speed;
                 const sprint = this.keys['ShiftLeft'] && this.state.playerStats.sprint > 0 ? 1.5 : 1;
                 
@@ -1681,10 +1996,12 @@
                     this.playerVelocity.y = this.state.playerStats.jump;
                     this.isGrounded = false;
                     this.hasDoubleJumped = false;
+                    this.playSound('jump');
                 } else if (this.keys['Space'] && this.canDoubleJump && !this.hasDoubleJumped && !this.isGrounded) {
                     this.playerVelocity.y = this.state.playerStats.jump * 0.8;
                     this.hasDoubleJumped = true;
                     this.keys['Space'] = false;
+                    this.playSound('jump');
                 }
                 
                 // Gravity (reduced for better jump feel)
@@ -1700,6 +2017,7 @@
                 this.playerVelocity.z *= 0.9;
                 
                 // Collision detection
+                const wasAirborne = !this.isGrounded;
                 this.isGrounded = false;
                 const playerBox = new THREE.Box3().setFromObject(this.player);
                 const playerHeight = playerBox.max.y - playerBox.min.y;
@@ -1717,6 +2035,8 @@
                     }
                 });
                 
+                if (wasAirborne && this.isGrounded) this.playSound('land');
+                
                 // Death check - respawn if fallen too far
                 if (this.player.position.y < -20) {
                     this.respawnPlayer();
@@ -1726,7 +2046,11 @@
                 this.okrs = this.okrs.filter(okr => {
                     const dist = this.player.position.distanceTo(okr.position);
                     if (dist < 2) {
-                        this.collectOKR();
+                        // Project 3D position to screen for floating text
+                        const v = okr.position.clone().project(this.camera);
+                        const sx = (v.x * 0.5 + 0.5) * this.canvas.width;
+                        const sy = (-v.y * 0.5 + 0.5) * this.canvas.height;
+                        this.collectOKR(sx, sy);
                         this.scene.remove(okr);
                         return false;
                     }
@@ -1742,6 +2066,38 @@
                         disc.material.emissiveIntensity = 0.3 + Math.sin(this.gameTime * 4) * 0.3;
                     }
                 });
+                
+                // Update enemies
+                if (this.enemies) {
+                    const playerBox = new THREE.Box3().setFromObject(this.player);
+                    this.enemies.forEach(enemy => {
+                        const type = enemy.userData.enemyType;
+                        if (type === 'email') {
+                            enemy.position.x += enemy.userData.speed * enemy.userData.dir * dt;
+                            if (Math.abs(enemy.position.x - enemy.userData.originX) > enemy.userData.patrolRange) {
+                                enemy.userData.dir *= -1;
+                            }
+                        } else if (type === 'bug') {
+                            enemy.position.y = enemy.userData.originY + Math.sin(this.gameTime * enemy.userData.bounceSpeed + enemy.userData.phase) * enemy.userData.bounceAmp;
+                        } else if (type === 'meeting') {
+                            const dx = this.player.position.x - enemy.position.x;
+                            const dy = this.player.position.y - enemy.position.y;
+                            const dz = this.player.position.z - enemy.position.z;
+                            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                            if (dist < 10 && dist > 0.1) {
+                                enemy.position.x += (dx / dist) * enemy.userData.speed * dt;
+                                enemy.position.y += (dy / dist) * enemy.userData.speed * dt;
+                                enemy.position.z += (dz / dist) * enemy.userData.speed * dt;
+                            }
+                            enemy.rotation.y += dt;
+                        }
+                        // Collision with player
+                        const enemyBox = new THREE.Box3().setFromObject(enemy);
+                        if (playerBox.intersectsBox(enemyBox)) {
+                            this.respawnPlayer();
+                        }
+                    });
+                }
                 
                 // Update lights to follow player
                 if (this.playerLight) {
@@ -1775,6 +2131,12 @@
                 this.camera.position.x = this.player.position.x + this.cameraOffset.x;
                 this.camera.position.y = this.player.position.y + this.cameraOffset.y;
                 this.camera.position.z = this.player.position.z + this.cameraOffset.z;
+                // Screen shake for Phase 1
+                if (this.shakeDuration > 0) {
+                    const s = this.shakeIntensity * 0.1;
+                    this.camera.position.x += (Math.random() - 0.5) * s;
+                    this.camera.position.y += (Math.random() - 0.5) * s;
+                }
                 this.camera.lookAt(this.player.position);
                 
                 // Animate spectators (idle sway + arm wave)
@@ -1798,10 +2160,14 @@
                 
                 // Render
                 this.renderer.render(this.scene, this.camera);
+                
+                // Floating texts & combo via DOM overlay (Phase 1 uses WebGL, not 2D canvas)
+                this.renderFloatingTextsDom();
             }
             
             updatePhase2(dt) {
                 if (!this.player) return;
+                this.showTutorialHint('phase2-intro', 'New phase! A/D to move, SPACE to jump. Collect OKRs and reach the car lift!');
                 const p = this.player;
                 
                 // Horizontal movement
@@ -1820,6 +2186,7 @@
                 if ((this.keys['Space'] || this.keys['KeyW'] || this.keys['ArrowUp']) && p.grounded) {
                     p.vy = this.p2JumpForce;
                     p.grounded = false;
+                    this.playSound('jump');
                 }
                 
                 // Gravity
@@ -1830,6 +2197,7 @@
                 p.y += p.vy * dt;
                 
                 // Platform collision
+                const p2WasAirborne = !p.grounded;
                 p.grounded = false;
                 const pw = 30, ph = 36; // player hitbox
                 this.platforms.forEach(plat => {
@@ -1843,6 +2211,7 @@
                         p.grounded = true;
                     }
                 });
+                if (p2WasAirborne && p.grounded) this.playSound('land');
                 
                 // Death check — fall off screen
                 if (p.y > this.canvas.height + 100) {
@@ -1864,7 +2233,7 @@
                         const dy = p.y - okr.y;
                         if (Math.abs(dx) < 30 && Math.abs(dy) < 30) {
                             okr.collected = true;
-                            this.collectOKR();
+                            this.collectOKR(okr.x - this.p2CamX, okr.y);
                         }
                     }
                 });
@@ -1882,7 +2251,7 @@
                         const dist = Math.abs(dx);
                         if (dist < 30) {
                             worker.targetOKR.collected = true;
-                            this.collectOKR();
+                            this.collectOKR(worker.targetOKR.x - this.p2CamX, worker.targetOKR.y);
                             worker.targetOKR = null;
                         } else {
                             worker.x += Math.sign(dx) * 120 * dt;
@@ -1913,6 +2282,15 @@
                 this.p2CamX += (targetCamX - this.p2CamX) * 0.1;
                 this.p2CamX = Math.max(0, this.p2CamX);
                 const cx = this.p2CamX;
+                
+                // Screen shake for Phase 2
+                let shakeX = 0, shakeY = 0;
+                if (this.shakeDuration > 0) {
+                    shakeX = (Math.random() - 0.5) * this.shakeIntensity;
+                    shakeY = (Math.random() - 0.5) * this.shakeIntensity;
+                }
+                ctx.save();
+                ctx.translate(shakeX, shakeY);
                 
                 // === SKY ===
                 const skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
@@ -2145,9 +2523,14 @@
                 
                 // Draw spectators
                 this.drawAnimeSpectators();
+                
+                // Floating texts & combo display
+                this.drawFloatingTexts();
+                this.drawComboDisplay();
+                this.drawParticles();
+                
+                ctx.restore(); // end screen shake translate
             }
-            
-            drawAnimeBackground() {
                 const ctx = this.ctx;
                 const canvas = this.canvas;
                 
@@ -2476,6 +2859,7 @@
             }
             
             updatePhase3(dt) {
+                this.showTutorialHint('phase3-intro', 'Automation phase! Click the canvas to place buildings. Start with Collectors for AC!');
                 // Automation - mostly passive
                 let productionRate = 1; // Base rate: 1 OKR/sec always
                 let acRegenRate = 1;    // Base AC regen: 1/sec
@@ -2523,6 +2907,15 @@
                 
                 // CRITICAL: Pixel-perfect rendering
                 ctx.imageSmoothingEnabled = false;
+                
+                // Screen shake for Phase 3
+                let shakeX = 0, shakeY = 0;
+                if (this.shakeDuration > 0) {
+                    shakeX = (Math.random() - 0.5) * this.shakeIntensity;
+                    shakeY = (Math.random() - 0.5) * this.shakeIntensity;
+                }
+                ctx.save();
+                ctx.translate(shakeX, shakeY);
                 
                 // Dark pixel background
                 ctx.fillStyle = '#0a0a0a';
@@ -2628,6 +3021,13 @@
                 
                 // Draw spectators
                 this.drawPixelSpectators();
+                
+                // Floating texts & combo display
+                this.drawFloatingTexts();
+                this.drawComboDisplay();
+                this.drawParticles();
+                
+                ctx.restore(); // end screen shake translate
             }
             
             drawOKRFactory(cx, cy) {
@@ -2840,9 +3240,52 @@
                 return Math.floor(num).toString();
             }
             
-            collectOKR() {
-                this.state.okrsCollected++;
-                this.state.totalOKRs++;
+            collectOKR(screenX, screenY) {
+                // Combo tracking
+                this.comboCount++;
+                this.comboTimer = 2.0;
+                
+                // Combo multiplier: x2 at 3, x3 at 5, x4 at 8
+                let comboMult = 1;
+                if (this.comboCount >= 8) comboMult = 4;
+                else if (this.comboCount >= 5) comboMult = 3;
+                else if (this.comboCount >= 3) comboMult = 2;
+                
+                // Escalating SFX pitch based on combo
+                this.playSoundPitched('coin', 1.0 + Math.min(this.comboCount, 8) * 0.08);
+                
+                this.state.okrsCollected += comboMult;
+                this.state.totalOKRs += comboMult;
+                
+                // Bonus currency from combo
+                if (comboMult > 1) {
+                    const cur = this.currentLevelData.currency;
+                    this.state.currencies[cur] = (this.state.currencies[cur] || 0) + (comboMult - 1);
+                }
+                
+                // Spawn floating text
+                const fx = screenX || this.canvas.width / 2;
+                const fy = screenY || this.canvas.height / 2;
+                this.spawnFloatingText(fx, fy, `+${comboMult} OKR`, '#ffd700');
+                if (this.comboCount >= 3) {
+                    this.comboDisplayTimer = 1.5;
+                    this.spawnFloatingText(fx, fy - 30, `COMBO x${this.comboCount}!`, '#ff6600');
+                }
+                
+                // OKR count tween
+                const el = document.getElementById('okrCount');
+                if (el) {
+                    el.style.transition = 'none';
+                    el.style.transform = 'scale(1.5)';
+                    el.style.color = '#ffd700';
+                    el.style.display = 'inline-block';
+                    requestAnimationFrame(() => {
+                        el.style.transition = 'transform 0.3s ease-out, color 0.3s ease-out';
+                        el.style.transform = 'scale(1)';
+                        el.style.color = '';
+                    });
+                }
+                
                 this.updateUI();
                 
                 // Make spectators react
@@ -2850,6 +3293,150 @@
                     if (spec.cheer) spec.cheer();
                     if (spec.react) spec.react('okr');
                 });
+                
+                // Screen shake & particle burst
+                this.triggerScreenShake(3, 100);
+                const px = screenX || this.canvas.width / 2;
+                const py = screenY || this.canvas.height / 2;
+                this.spawnParticles(px, py, 5 + Math.floor(Math.random() * 4), '#ffd700');
+            }
+            
+            playSoundPitched(type, pitchMult) {
+                if (this.musicMuted) return;
+                if (!this.audioCtx) {
+                    try { this.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { return; }
+                }
+                if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+                const ctx = this.audioCtx;
+                const now = ctx.currentTime;
+                if (type === 'coin') {
+                    [523.25, 659.25, 783.99].forEach((freq, i) => {
+                        const o = ctx.createOscillator(), g = ctx.createGain();
+                        o.type = 'triangle'; o.frequency.value = freq * pitchMult;
+                        g.gain.setValueAtTime(0.15, now + i * 0.05);
+                        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.05 + 0.05);
+                        o.connect(g); g.connect(ctx.destination);
+                        o.start(now + i * 0.05); o.stop(now + i * 0.05 + 0.05);
+                    });
+                } else {
+                    this.playSound(type);
+                }
+            }
+            
+            spawnFloatingText(x, y, text, color) {
+                this.floatingTexts.push({ x, y, text, color, alpha: 1.0, vy: -60 });
+            }
+            
+            updateFloatingTexts(dt) {
+                for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
+                    const ft = this.floatingTexts[i];
+                    ft.y += ft.vy * dt;
+                    ft.alpha -= dt * 0.8;
+                    if (ft.alpha <= 0) this.floatingTexts.splice(i, 1);
+                }
+            }
+            
+            drawFloatingTexts() {
+                const ctx = this.ctx;
+                if (!ctx) return;
+                // Clear DOM overlay when using canvas rendering
+                const overlay = document.getElementById('floatingTextOverlay');
+                if (overlay) overlay.innerHTML = '';
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.font = 'bold 18px monospace';
+                this.floatingTexts.forEach(ft => {
+                    ctx.globalAlpha = Math.max(0, ft.alpha);
+                    ctx.fillStyle = ft.color;
+                    ctx.shadowColor = ft.color;
+                    ctx.shadowBlur = 6;
+                    ctx.fillText(ft.text, ft.x, ft.y);
+                });
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 1.0;
+                ctx.restore();
+            }
+            
+            drawComboDisplay() {
+                if (this.comboCount < 3) return;
+                const ctx = this.ctx;
+                if (!ctx) return;
+                const pulse = 1.0 + Math.sin(this.gameTime * 8) * 0.15;
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.font = `bold ${Math.floor(36 * pulse)}px monospace`;
+                ctx.fillStyle = '#ffd700';
+                ctx.shadowColor = '#ff8800';
+                ctx.shadowBlur = 12;
+                ctx.globalAlpha = Math.min(1, this.comboDisplayTimer);
+                ctx.fillText(`COMBO x${this.comboCount}!`, this.canvas.width / 2, 100);
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 1.0;
+                ctx.restore();
+            }
+            
+            renderFloatingTextsDom() {
+                const overlay = document.getElementById('floatingTextOverlay');
+                if (!overlay) return;
+                overlay.innerHTML = '';
+                this.floatingTexts.forEach(ft => {
+                    const el = document.createElement('div');
+                    el.textContent = ft.text;
+                    el.style.cssText = `position:absolute;left:${ft.x}px;top:${ft.y}px;color:${ft.color};font:bold 18px monospace;opacity:${Math.max(0,ft.alpha)};text-shadow:0 0 6px ${ft.color};pointer-events:none;transform:translateX(-50%);`;
+                    overlay.appendChild(el);
+                });
+                if (this.comboCount >= 3 && this.comboDisplayTimer > 0) {
+                    const pulse = 1.0 + Math.sin(this.gameTime * 8) * 0.15;
+                    const el = document.createElement('div');
+                    el.textContent = `COMBO x${this.comboCount}!`;
+                    el.style.cssText = `position:absolute;left:50%;top:80px;transform:translateX(-50%) scale(${pulse});color:#ffd700;font:bold 36px monospace;opacity:${Math.min(1,this.comboDisplayTimer)};text-shadow:0 0 12px #ff8800;pointer-events:none;`;
+                    overlay.appendChild(el);
+                }
+            }
+            
+            triggerScreenShake(intensity, duration) {
+                this.shakeIntensity = intensity;
+                this.shakeDuration = duration / 1000;
+            }
+            
+            spawnParticles(x, y, count, color) {
+                for (let i = 0; i < count; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 80 + Math.random() * 120;
+                    this.particles.push({
+                        x, y,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed,
+                        alpha: 1.0,
+                        radius: 2 + Math.random() * 3,
+                        color: color || '#ffd700'
+                    });
+                }
+            }
+            
+            updateParticles(dt) {
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    const p = this.particles[i];
+                    p.x += p.vx * dt;
+                    p.y += p.vy * dt;
+                    p.alpha -= dt * 1.5;
+                    if (p.alpha <= 0) this.particles.splice(i, 1);
+                }
+            }
+            
+            drawParticles() {
+                const ctx = this.ctx;
+                if (!ctx) return;
+                ctx.save();
+                this.particles.forEach(p => {
+                    ctx.globalAlpha = Math.max(0, p.alpha);
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                ctx.globalAlpha = 1.0;
+                ctx.restore();
             }
             
             respawnPlayer() {
@@ -2918,6 +3505,7 @@
             completeLevel() {
                 if (this.levelCompleting) return;
                 this.levelCompleting = true;
+                this.playSound('complete');
                 
                 const config = this.currentLevelData;
                 
@@ -2931,6 +3519,10 @@
                 const currencyType = config.currency;
                 this.state.currencies[currencyType] += config.reward;
                 
+                // Screen shake & floating text for level complete
+                this.triggerScreenShake(8, 300);
+                this.spawnFloatingText(this.canvas.width / 2, this.canvas.height / 2, `+${config.reward} ${currencyType.toUpperCase()}`, '#00ff88');
+                
                 // Mark as completed
                 if (!this.state.completedLevels.includes(this.state.currentLevel)) {
                     this.state.completedLevels.push(this.state.currentLevel);
@@ -2939,9 +3531,11 @@
                 // Unlock abilities
                 if (config.unlock === 'sprint') {
                     this.state.playerStats.sprint = 1;
+                    this.showTutorialHint('sprint', 'SHIFT to sprint! Hold it while moving.', 5000);
                 }
                 if (config.unlock === 'doubleJump') {
                     this.canDoubleJump = true;
+                    this.showTutorialHint('double-jump', 'Press SPACE again mid-air for double jump!', 5000);
                 }
                 
                 // Check for evolution
@@ -2952,16 +3546,53 @@
                 } else if (config.final) {
                     this.showVictoryScreen();
                 } else {
-                    // Next level
+                    // Next level - show completion screen
                     console.log(`Level ${this.state.currentLevel} complete! Loading level ${this.state.currentLevel + 1}`);
-                    setTimeout(() => {
-                        this.loadLevel(this.state.currentLevel + 1);
-                    }, 1000);
+                    this.showLevelCompleteScreen();
                 }
                 
                 this.saveGame();
             }
             
+            showLevelCompleteScreen() {
+                this.paused = true;
+                const config = this.currentLevelData;
+                const level = this.state.currentLevel;
+                const timeTaken = ((performance.now() - (this.levelStartTime || 0)) / 1000);
+                const stars = timeTaken < 30 ? 3 : timeTaken < 60 ? 2 : 1;
+                const currencyLabel = config.currency.toUpperCase();
+
+                // Remove existing overlay if any
+                const existing = document.getElementById('levelComplete');
+                if (existing) existing.remove();
+
+                const overlay = document.createElement('div');
+                overlay.id = 'levelComplete';
+                overlay.innerHTML = `
+                    <div class="lc-title">LEVEL ${level} COMPLETE!</div>
+                    <div class="lc-stars">
+                        ${[0,1,2].map(i => `<span class="lc-star" data-i="${i}">${i < stars ? '⭐' : '☆'}</span>`).join('')}
+                    </div>
+                    <div class="lc-info">OKRs Collected: <span>${Math.floor(this.state.okrsCollected)}/${config.okrGoal}</span></div>
+                    <div class="lc-info">Currency Earned: <span>+${config.reward} ${currencyLabel}</span></div>
+                    <div class="lc-info">Time: <span>${timeTaken.toFixed(1)}s</span></div>
+                    <button class="lc-continue" id="lcContinueBtn">CONTINUE</button>
+                `;
+                document.body.appendChild(overlay);
+
+                // Animate stars one by one
+                const starEls = overlay.querySelectorAll('.lc-star');
+                starEls.forEach((el, i) => {
+                    setTimeout(() => el.classList.add('pop'), 300 + i * 400);
+                });
+
+                document.getElementById('lcContinueBtn').addEventListener('click', () => {
+                    overlay.remove();
+                    this.paused = false;
+                    this.loadLevel(level + 1);
+                });
+            }
+
             triggerEvolution1() {
                 this.paused = true;
                 
@@ -3115,6 +3746,7 @@
             
             hireWorker() {
                 if (this.state.currencies.mp >= this.hireCost) {
+                    this.playSound('hire');
                     this.state.currencies.mp -= this.hireCost;
                     
                     this.state.aiWorkers.push({
@@ -3184,8 +3816,23 @@
                 document.getElementById('phaseDesc').innerHTML = `<strong>${phaseDesc}</strong>`;
             }
             
+            showTutorialHint(id, text, duration = 4000) {
+                if (this.tutorialShown[id]) return;
+                this.tutorialShown[id] = true;
+                const div = document.createElement('div');
+                div.className = 'tutorial-hint';
+                div.textContent = text;
+                document.body.appendChild(div);
+                requestAnimationFrame(() => div.classList.add('visible'));
+                setTimeout(() => {
+                    div.classList.remove('visible');
+                    setTimeout(() => div.remove(), 400);
+                }, duration);
+            }
+            
             saveGame() {
-                localStorage.setItem('teamDominosGame', JSON.stringify(this.state));
+                const saveData = Object.assign({}, this.state, { tutorialShown: this.tutorialShown });
+                localStorage.setItem('teamDominosGame', JSON.stringify(saveData));
                 console.log('Game saved!');
             }
             
@@ -3197,7 +3844,12 @@
             loadGame() {
                 const saved = localStorage.getItem('teamDominosGame');
                 if (saved) {
-                    this.state = JSON.parse(saved);
+                    const data = JSON.parse(saved);
+                    if (data.tutorialShown) {
+                        this.tutorialShown = data.tutorialShown;
+                        delete data.tutorialShown;
+                    }
+                    this.state = data;
                     document.getElementById('menu').style.display = 'none';
                     this.gameStarted = true;
                     
@@ -3225,6 +3877,16 @@
                 this.gameTime += this.deltaTime;
                 
                 if (!this.paused) {
+                    // Update combo timer
+                    if (this.comboTimer > 0) {
+                        this.comboTimer -= this.deltaTime;
+                        if (this.comboTimer <= 0) { this.comboCount = 0; this.comboTimer = 0; }
+                    }
+                    if (this.comboDisplayTimer > 0) this.comboDisplayTimer -= this.deltaTime;
+                    this.updateFloatingTexts(this.deltaTime);
+                    this.updateParticles(this.deltaTime);
+                    if (this.shakeDuration > 0) this.shakeDuration -= this.deltaTime;
+                    
                     if (this.state.phase === 1) {
                         this.updatePhase1(this.deltaTime);
                     } else if (this.state.phase === 2) {
