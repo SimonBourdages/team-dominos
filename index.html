@@ -2114,13 +2114,13 @@
             
             updatePhase3(dt) {
                 // Automation - mostly passive
-                let productionRate = 0;
+                let productionRate = 1; // Base rate: 1 OKR/sec always
                 
                 this.automationNodes.forEach(node => {
                     productionRate += node.rate;
                 });
                 
-                // AI workers contribute at 25% speed
+                // AI workers contribute
                 const workerContribution = this.state.aiWorkers.length * 0.5;
                 productionRate += workerContribution;
                 
@@ -2129,11 +2129,15 @@
                 this.state.okrsCollected += okrsThisFrame;
                 this.state.totalOKRs += okrsThisFrame;
                 
+                // AC regenerates passively (faster with more nodes)
+                this.state.currencies.ac += (1 + this.automationNodes.length * 0.5) * dt;
+                
                 // Check completion
                 if (this.state.okrsCollected >= this.currentLevelData.okrGoal) {
                     this.completeLevel();
                 }
                 
+                this.updateUI();
                 this.renderPhase3(productionRate);
             }
             
@@ -2217,6 +2221,27 @@
                     `${this.formatNumber(this.state.okrsCollected)} / ${this.formatNumber(this.currentLevelData.okrGoal)}`,
                     Math.floor(centerX),
                     Math.floor(centerY + 10)
+                );
+                
+                // AC balance and help text
+                ctx.fillStyle = '#ffcc00';
+                ctx.font = 'bold 24px monospace';
+                ctx.fillText(
+                    `AC: ${Math.floor(this.state.currencies.ac)}`,
+                    Math.floor(centerX),
+                    Math.floor(centerY + size/2 + 40)
+                );
+                ctx.fillStyle = '#888';
+                ctx.font = '14px monospace';
+                ctx.fillText(
+                    'AC regenerates over time. Click canvas to place automation buildings.',
+                    Math.floor(centerX),
+                    Math.floor(centerY + size/2 + 65)
+                );
+                ctx.fillText(
+                    `Nodes: ${this.automationNodes.length} | Workers: ${this.state.aiWorkers.length}`,
+                    Math.floor(centerX),
+                    Math.floor(centerY + size/2 + 85)
                 );
                 
                 // CRT scanlines effect
