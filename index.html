@@ -172,6 +172,7 @@
             left: 50%;
             transform: translate(-50%, -50%);
             background: rgba(0, 0, 0, 0.95);
+            display: block;
             padding: 40px;
             border: 3px solid #0ff;
             border-radius: 10px;
@@ -387,6 +388,10 @@
                 this.automationNodes = [];
                 this.selectedBuilding = null;
                 
+                // Spectators
+                this.currentLevelSpectators = [];
+                this.initSpectatorConfigs();
+                
                 this.setupEventListeners();
                 this.showMenu();
             }
@@ -408,6 +413,26 @@
                     13: { okrGoal: 10000, reward: 500, currency: 'ac', description: 'Exponential growth', boss: false },
                     14: { okrGoal: 100000, reward: 1000, currency: 'ac', description: 'Singularity', boss: false },
                     15: { okrGoal: 1000000, reward: 0, currency: 'ac', description: 'FINAL: Digital Transformation', boss: true, final: true }
+                };
+            }
+            
+            initSpectatorConfigs() {
+                this.levelSpectators = {
+                    1: [{ name: 'Bea Villanueva', color: '#4a90e2', quote: 'Welcome!' }],
+                    2: [{ name: 'Francisco Garcia-Ascanio', color: '#e74c3c' }, { name: 'Mason Allen', color: '#27ae60' }],
+                    3: [{ name: 'Ramon Rick', color: '#3498db', quote: 'Speed is key!' }],
+                    4: [{ name: 'Erik Wahlstrom', color: '#9b59b6', quote: 'Go vertical!' }],
+                    5: [{ name: 'Murali Govindaswamy', color: '#e67e22' }, { name: 'Stephane Cavin', color: '#1abc9c' }],
+                    6: [{ name: 'Avital Sadot', color: '#f39c12', quote: "I'll help!" }],
+                    7: [{ name: 'Parker Wall', color: '#2ecc71' }, { name: 'Zaki Rahman', color: '#16a085' }],
+                    8: [{ name: 'Jeff Eckerlin', color: '#8e44ad' }, { name: 'Lauren Bell', color: '#c0392b' }],
+                    9: [{ name: 'Patrick Shao', color: '#d35400' }, { name: 'Katy Ionis', color: '#2980b9' }],
+                    10: [{ name: 'Jason Almaraz', color: '#27ae60' }, { name: 'Ada Ye', color: '#e91e63' }],
+                    11: [{ name: 'Josh Kim', color: '#00bcd4', quote: 'Build it!' }],
+                    12: [{ name: 'James Becker', color: '#9c27b0', quote: 'Connect!' }],
+                    13: [{ name: 'Yanan Shi', color: '#ff9800' }, { name: 'Lauren Go', color: '#4caf50' }],
+                    14: [{ name: 'ALL 20', color: '#00ffff', quote: 'Almost there!' }],
+                    15: [{ name: 'Jrod', color: '#ffd700', quote: 'Choose wisely...' }]
                 };
             }
             
@@ -701,6 +726,9 @@
                 this.jrodHQ.castShadow = true;
                 this.jrodHQ.userData.isLevelObject = true;
                 this.scene.add(this.jrodHQ);
+                
+                // Add spectators for this level
+                this.loadSpectators3D(levelNum);
             }
             
             createPlatform(x, y, z, width, height, depth, color) {
@@ -729,6 +757,160 @@
                 okr.userData.isOKR = true;
                 this.scene.add(okr);
                 this.okrs.push(okr);
+            }
+            
+            loadSpectators3D(levelNum) {
+                // Clear existing spectators
+                this.currentLevelSpectators.forEach(spec => {
+                    if (spec.mesh && this.scene) {
+                        this.scene.remove(spec.mesh);
+                    }
+                });
+                this.currentLevelSpectators = [];
+                
+                const spectators = this.levelSpectators[levelNum];
+                if (!spectators) return;
+                
+                spectators.forEach((spec, i) => {
+                    const x = i === 0 ? -10 : 10;
+                    const z = -8;
+                    const spectator = this.createSpectator3D(spec.name, spec.color, x, z, spec.quote);
+                    this.currentLevelSpectators.push(spectator);
+                });
+            }
+            
+            createSpectator3D(name, color, x, z, quote) {
+                const mesh = new THREE.Group();
+                
+                // Body
+                const bodyGeometry = new THREE.BoxGeometry(0.8, 1.5, 0.6);
+                const bodyMaterial = new THREE.MeshLambertMaterial({ color: color });
+                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                body.castShadow = true;
+                
+                // Head
+                const headGeometry = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+                const headMaterial = new THREE.MeshLambertMaterial({ color: 0xffdbac });
+                const head = new THREE.Mesh(headGeometry, headMaterial);
+                head.position.y = 1.2;
+                head.castShadow = true;
+                
+                mesh.add(body);
+                mesh.add(head);
+                mesh.position.set(x, 0.75, z);
+                mesh.userData.isLevelObject = true;
+                
+                this.scene.add(mesh);
+                
+                return {
+                    name: name,
+                    mesh: mesh,
+                    quote: quote,
+                    baseY: 0.75,
+                    animTime: Math.random() * Math.PI * 2,
+                    cheer: function() {
+                        // Jump animation using simple tween
+                        const startY = this.mesh.position.y;
+                        const jumpHeight = 1.5;
+                        const duration = 400;
+                        const startTime = Date.now();
+                        
+                        const jump = () => {
+                            const elapsed = Date.now() - startTime;
+                            const progress = elapsed / duration;
+                            
+                            if (progress < 0.5) {
+                                this.mesh.position.y = startY + (jumpHeight * progress * 2);
+                            } else if (progress < 1) {
+                                this.mesh.position.y = startY + jumpHeight - (jumpHeight * (progress - 0.5) * 2);
+                            } else {
+                                this.mesh.position.y = startY;
+                                return;
+                            }
+                            requestAnimationFrame(jump);
+                        };
+                        jump();
+                    }
+                };
+            }
+            
+            loadSpectatorsAnime(levelNum) {
+                this.currentLevelSpectators = [];
+                
+                const spectators = this.levelSpectators[levelNum];
+                if (!spectators) return;
+                
+                spectators.forEach((spec, i) => {
+                    const x = i === 0 ? 50 : this.canvas.width - 120;
+                    const y = 100 + i * 80;
+                    const spectator = {
+                        name: spec.name,
+                        color: spec.color,
+                        quote: spec.quote || '',
+                        x: x,
+                        y: y,
+                        emotion: 'neutral',
+                        speechBubble: '',
+                        speechTimer: 0,
+                        react: function(event) {
+                            if (event === 'okr') {
+                                this.speechBubble = 'Nice!';
+                                this.speechTimer = 60;
+                            } else if (event === 'complete') {
+                                this.speechBubble = this.quote || 'Great!';
+                                this.speechTimer = 90;
+                            }
+                        }
+                    };
+                    this.currentLevelSpectators.push(spectator);
+                });
+            }
+            
+            loadSpectatorsPixel(levelNum) {
+                this.currentLevelSpectators = [];
+                
+                const spectators = this.levelSpectators[levelNum];
+                if (!spectators) return;
+                
+                // Special handling for level 14 - all 20 team members
+                if (levelNum === 14) {
+                    const allNames = [
+                        'Bea', 'Francisco', 'Ramon', 'Erik', 'Mason', 'Stephane', 'Avital', 'Murali',
+                        'Parker', 'Zaki', 'Jeff', 'Lauren B', 'Patrick', 'Katy', 'Jason', 'Ada',
+                        'Josh', 'James', 'Yanan', 'Lauren G'
+                    ];
+                    const colors = [
+                        '#4a90e2', '#e74c3c', '#3498db', '#9b59b6', '#27ae60', '#1abc9c', '#f39c12', '#e67e22',
+                        '#2ecc71', '#16a085', '#8e44ad', '#c0392b', '#d35400', '#2980b9', '#27ae60', '#e91e63',
+                        '#00bcd4', '#9c27b0', '#ff9800', '#4caf50'
+                    ];
+                    
+                    allNames.forEach((name, i) => {
+                        const row = Math.floor(i / 10);
+                        const col = i % 10;
+                        const spectator = {
+                            name: name,
+                            color: colors[i],
+                            x: 5 + col * 8,
+                            y: 5 + row * 10,
+                            scale: 3
+                        };
+                        this.currentLevelSpectators.push(spectator);
+                    });
+                } else {
+                    spectators.forEach((spec, i) => {
+                        const x = i === 0 ? 5 : this.canvas.width / 4 - 10;
+                        const y = 5 + i * 10;
+                        const spectator = {
+                            name: spec.name,
+                            color: spec.color,
+                            x: x,
+                            y: y,
+                            scale: 4
+                        };
+                        this.currentLevelSpectators.push(spectator);
+                    });
+                }
             }
             
             generatePhase2Level(levelNum) {
@@ -762,6 +944,9 @@
                 
                 // HQ position
                 this.jrodHQ = { x: size - 2, y: 1, z: size - 2 };
+                
+                // Add spectators for this level
+                this.loadSpectatorsAnime(levelNum);
             }
             
             generatePhase3Level(levelNum) {
@@ -769,6 +954,9 @@
                 this.okrs = [];
                 this.platforms = [];
                 this.jrodHQ = { active: true };
+                
+                // Add spectators for this level
+                this.loadSpectatorsPixel(levelNum);
             }
             
             updatePhase1(dt) {
@@ -856,6 +1044,15 @@
                 this.camera.position.y = this.player.position.y + this.cameraOffset.y;
                 this.camera.position.z = this.player.position.z + this.cameraOffset.z;
                 this.camera.lookAt(this.player.position);
+                
+                // Animate spectators
+                this.currentLevelSpectators.forEach(spec => {
+                    if (spec.mesh) {
+                        spec.animTime += dt;
+                        spec.mesh.rotation.z = Math.sin(spec.animTime) * 0.1;
+                        spec.mesh.position.y = spec.baseY + Math.sin(spec.animTime * 2) * 0.1;
+                    }
+                });
                 
                 // Render
                 this.renderer.render(this.scene, this.camera);
@@ -975,6 +1172,9 @@
                     const wPos = this.toIso(worker.x - this.player.x, worker.y + 1, worker.z - this.player.z);
                     this.drawAnimeWorker(offsetX + wPos.x, offsetY + wPos.y);
                 });
+                
+                // Draw spectators
+                this.drawAnimeSpectators();
             }
             
             drawAnimeBackground() {
@@ -1154,6 +1354,98 @@
                 };
             }
             
+            drawAnimeSpectators() {
+                const ctx = this.ctx;
+                
+                this.currentLevelSpectators.forEach(spectator => {
+                    // Decrease speech timer
+                    if (spectator.speechTimer > 0) {
+                        spectator.speechTimer--;
+                        if (spectator.speechTimer === 0) {
+                            spectator.speechBubble = '';
+                        }
+                    }
+                    
+                    // Character body (anime style)
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 3;
+                    ctx.fillStyle = spectator.color;
+                    ctx.fillRect(spectator.x, spectator.y, 40, 60);
+                    ctx.strokeRect(spectator.x, spectator.y, 40, 60);
+                    
+                    // Big anime eyes
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.beginPath();
+                    ctx.arc(spectator.x + 12, spectator.y + 20, 6, 0, Math.PI * 2);
+                    ctx.arc(spectator.x + 28, spectator.y + 20, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.fillStyle = '#000';
+                    ctx.beginPath();
+                    ctx.arc(spectator.x + 12, spectator.y + 20, 3, 0, Math.PI * 2);
+                    ctx.arc(spectator.x + 28, spectator.y + 20, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Name label
+                    ctx.fillStyle = '#000';
+                    ctx.font = 'bold 10px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(spectator.name.split(' ')[0], spectator.x + 20, spectator.y + 75);
+                    
+                    // Speech bubble
+                    if (spectator.speechBubble) {
+                        ctx.fillStyle = '#FFF';
+                        ctx.strokeStyle = '#000';
+                        ctx.lineWidth = 2;
+                        const bx = spectator.x + 50, by = spectator.y - 30;
+                        ctx.fillRect(bx, by, 100, 30);
+                        ctx.strokeRect(bx, by, 100, 30);
+                        
+                        // Triangle pointer
+                        ctx.beginPath();
+                        ctx.moveTo(bx, by + 20);
+                        ctx.lineTo(bx - 10, by + 15);
+                        ctx.lineTo(bx, by + 10);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.stroke();
+                        
+                        ctx.fillStyle = '#000';
+                        ctx.font = '12px Arial';
+                        ctx.textAlign = 'left';
+                        ctx.fillText(spectator.speechBubble, bx + 5, by + 18);
+                    }
+                });
+            }
+            
+            drawPixelSpectators() {
+                const ctx = this.ctx;
+                
+                this.currentLevelSpectators.forEach(spectator => {
+                    const s = spectator.scale;
+                    
+                    // 8x8 pixel sprite scaled up
+                    ctx.fillStyle = spectator.color;
+                    ctx.fillRect(spectator.x * s, spectator.y * s, 8 * s, 8 * s);
+                    
+                    // Simple pixel face
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect((spectator.x + 2) * s, (spectator.y + 2) * s, 1 * s, 1 * s);
+                    ctx.fillRect((spectator.x + 5) * s, (spectator.y + 2) * s, 1 * s, 1 * s);
+                    
+                    // Smile
+                    ctx.fillRect((spectator.x + 2) * s, (spectator.y + 5) * s, 4 * s, 1 * s);
+                    
+                    // Name (only show if scale is 4 or more to avoid clutter)
+                    if (spectator.scale >= 4) {
+                        ctx.fillStyle = '#FFF';
+                        ctx.font = '8px monospace';
+                        ctx.textAlign = 'left';
+                        ctx.fillText(spectator.name, spectator.x * s, (spectator.y + 10) * s);
+                    }
+                });
+            }
+            
             updatePhase3(dt) {
                 // Automation - mostly passive
                 let productionRate = 0;
@@ -1263,6 +1555,9 @@
                 
                 // CRT scanlines effect
                 this.drawScanlines();
+                
+                // Draw spectators
+                this.drawPixelSpectators();
             }
             
             drawPixelNode(x, y, rate, name) {
@@ -1354,6 +1649,12 @@
                 this.state.okrsCollected++;
                 this.state.totalOKRs++;
                 this.updateUI();
+                
+                // Make spectators react
+                this.currentLevelSpectators.forEach(spec => {
+                    if (spec.cheer) spec.cheer();
+                    if (spec.react) spec.react('okr');
+                });
             }
             
             respawnPlayer() {
@@ -1366,6 +1667,12 @@
             
             completeLevel() {
                 const config = this.currentLevelData;
+                
+                // Make spectators react to completion
+                this.currentLevelSpectators.forEach(spec => {
+                    if (spec.cheer) spec.cheer();
+                    if (spec.react) spec.react('complete');
+                });
                 
                 // Award currency
                 const currencyType = config.currency;
