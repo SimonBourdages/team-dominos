@@ -529,7 +529,7 @@
                 
                 // Create player - character in a small car
                 const playerGroup = new THREE.Group();
-                const carBodyMat = new THREE.MeshPhongMaterial({ color: 0xe21a2c });
+                const carBodyMat = new THREE.MeshPhongMaterial({ color: 0x2266cc });
                 const metalMat = new THREE.MeshPhongMaterial({ color: 0x888888 });
                 const glassMat = new THREE.MeshPhongMaterial({ color: 0x88ccff, transparent: true, opacity: 0.6 });
                 const tireMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
@@ -654,11 +654,27 @@
             
             setupPhase2() {
                 this.disposeThreeJS();
+                
+                // Create a fresh 2D canvas (WebGL canvas can't switch to 2D)
+                const oldCanvas = this.canvas;
+                const newCanvas = document.createElement('canvas');
+                newCanvas.id = 'gameCanvas';
+                newCanvas.width = window.innerWidth;
+                newCanvas.height = window.innerHeight;
+                newCanvas.style.cssText = oldCanvas.style.cssText;
+                oldCanvas.parentNode.replaceChild(newCanvas, oldCanvas);
+                this.canvas = newCanvas;
+                
                 this.ctx = this.canvas.getContext('2d');
                 this.state.renderMode = 'isometric';
                 
+                // Re-attach click handler
+                this.canvas.addEventListener('click', (e) => {
+                    if (this.state.phase === 3) this.handleCanvasClick(e);
+                });
+                
                 // Player position in 2D
-                this.player = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
+                this.player = { x: 10, y: 0, z: 10, vx: 0, vy: 0, vz: 0 };
                 
                 // Update UI
                 document.getElementById('controlsText').innerHTML = 
@@ -667,7 +683,19 @@
             }
             
             setupPhase3() {
-                this.ctx = this.canvas.getContext('2d');
+                // If coming from Phase 2, canvas already supports 2D
+                // If somehow context is lost, create fresh canvas
+                if (!this.ctx) {
+                    const oldCanvas = this.canvas;
+                    const newCanvas = document.createElement('canvas');
+                    newCanvas.id = 'gameCanvas';
+                    newCanvas.width = window.innerWidth;
+                    newCanvas.height = window.innerHeight;
+                    newCanvas.style.cssText = oldCanvas.style.cssText;
+                    oldCanvas.parentNode.replaceChild(newCanvas, oldCanvas);
+                    this.canvas = newCanvas;
+                    this.ctx = this.canvas.getContext('2d');
+                }
                 this.state.renderMode = 'abstract';
                 
                 // Hide workers, show buildings
@@ -829,75 +857,72 @@
                     this.createOKR(pos.x, pos.y, pos.z);
                 }
                 
-                // Create Jrod HQ - Garage goal
+                // Create Jrod HQ - Car Lift goal
                 const lastPlatform = this.platforms[this.platforms.length - 1];
                 const hqX = lastPlatform ? lastPlatform.position.x + 8 : 25;
                 
-                const garageGroup = new THREE.Group();
-                const wallMat = new THREE.MeshPhongMaterial({ color: 0x8B4513 });
-                const roofMat = new THREE.MeshPhongMaterial({ color: 0x555555 });
-                const doorMat = new THREE.MeshPhongMaterial({ color: 0xcccccc, emissive: 0x333333, emissiveIntensity: 0.2 });
+                const liftGroup = new THREE.Group();
+                const steelMat = new THREE.MeshPhongMaterial({ color: 0x888888 });
+                const baseMat = new THREE.MeshPhongMaterial({ color: 0x444444 });
+                const yellowMat = new THREE.MeshPhongMaterial({ color: 0xffcc00, emissive: 0xffaa00, emissiveIntensity: 0.3 });
                 
-                // Back wall
-                const backWall = new THREE.Mesh(new THREE.BoxGeometry(6, 4, 0.3), wallMat);
-                backWall.position.set(0, 2, -2.5);
-                garageGroup.add(backWall);
+                // Base plate
+                const base = new THREE.Mesh(new THREE.BoxGeometry(3, 0.2, 4), baseMat);
+                base.position.set(0, 0.1, 0);
+                liftGroup.add(base);
                 
-                // Left wall
-                const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.3, 4, 5), wallMat);
-                sideWall.position.set(-3, 2, 0);
-                garageGroup.add(sideWall);
+                // Left pillar
+                const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.3, 6, 0.3), steelMat);
+                pillar.position.set(-1.2, 3, 0);
+                liftGroup.add(pillar);
                 
-                // Right wall
-                const rightWall = sideWall.clone();
-                rightWall.position.set(3, 2, 0);
-                garageGroup.add(rightWall);
+                // Right pillar
+                const pillar2 = pillar.clone();
+                pillar2.position.set(1.2, 3, 0);
+                liftGroup.add(pillar2);
                 
-                // Roof
-                const roofShape = new THREE.Shape();
-                roofShape.moveTo(-3.5, 0);
-                roofShape.lineTo(0, 2);
-                roofShape.lineTo(3.5, 0);
-                roofShape.lineTo(-3.5, 0);
-                const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth: 5.5, bevelEnabled: false });
-                const roof = new THREE.Mesh(roofGeo, roofMat);
-                roof.position.set(0, 4, -2.75);
-                garageGroup.add(roof);
+                // Cross beam at top
+                const beam = new THREE.Mesh(new THREE.BoxGeometry(3, 0.2, 0.2), steelMat);
+                beam.position.set(0, 6, 0);
+                liftGroup.add(beam);
                 
-                // Garage door (open, tilted up)
-                const door = new THREE.Mesh(new THREE.BoxGeometry(5, 0.2, 3.5), doorMat);
-                door.position.set(0, 3.8, 2.5);
-                garageGroup.add(door);
+                // Lift platform (the part that goes up)
+                const liftPlatform = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.15, 3.5), yellowMat);
+                liftPlatform.position.set(0, 0.3, 0);
+                liftPlatform.name = 'liftPlatform';
+                liftGroup.add(liftPlatform);
                 
-                // Door panels (horizontal lines)
-                for (let i = 0; i < 4; i++) {
-                    const panel = new THREE.Mesh(new THREE.BoxGeometry(5, 0.02, 0.02), new THREE.MeshPhongMaterial({ color: 0x999999 }));
-                    panel.position.set(0, 3.85, 1.5 + i * 0.8);
-                    garageGroup.add(panel);
+                // Lift arms (scissors)
+                const armMat = new THREE.MeshPhongMaterial({ color: 0xcc0000 });
+                const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.1, 3), armMat);
+                leftArm.position.set(-1, 0.3, 0);
+                liftGroup.add(leftArm);
+                const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.1, 3), armMat);
+                rightArm.position.set(1, 0.3, 0);
+                liftGroup.add(rightArm);
+                
+                // Warning stripes on base
+                const stripeMat = new THREE.MeshPhongMaterial({ color: 0x000000 });
+                for (let i = -1; i <= 1; i += 0.5) {
+                    const stripe = new THREE.Mesh(new THREE.BoxGeometry(3, 0.01, 0.1), stripeMat);
+                    stripe.position.set(0, 0.21, i);
+                    liftGroup.add(stripe);
                 }
                 
-                // Floor (concrete)
-                const floor = new THREE.Mesh(new THREE.BoxGeometry(6, 0.1, 5), new THREE.MeshPhongMaterial({ color: 0xaaaaaa }));
-                floor.position.set(0, 0.05, 0);
-                garageGroup.add(floor);
+                // Arrow indicator (glowing)
+                const arrowMat = new THREE.MeshPhongMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 0.8 });
+                const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.6, 4), arrowMat);
+                arrow.position.set(0, 7, 0);
+                arrow.rotation.x = Math.PI;
+                liftGroup.add(arrow);
                 
-                // Light above door
-                const light = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), new THREE.MeshPhongMaterial({ color: 0xffff00, emissive: 0xffff00, emissiveIntensity: 1 }));
-                light.position.set(0, 3.9, 2.6);
-                garageGroup.add(light);
-                
-                // Point light for glow
-                const glow = new THREE.PointLight(0xffff00, 0.5, 8);
-                glow.position.set(0, 3.5, 2.5);
-                garageGroup.add(glow);
-                
-                garageGroup.position.set(hqX, 0, 0);
-                garageGroup.traverse(child => {
+                liftGroup.position.set(hqX, 0, 0);
+                liftGroup.traverse(child => {
                     child.castShadow = true;
                     child.userData.isLevelObject = true;
                 });
                 
-                this.jrodHQ = garageGroup;
+                this.jrodHQ = liftGroup;
                 this.jrodHQ.userData.isLevelObject = true;
                 this.scene.add(this.jrodHQ);
                 
@@ -1169,10 +1194,28 @@
                 const sprint = this.keys['ShiftLeft'] && this.state.playerStats.sprint > 0 ? 1.5 : 1;
                 
                 // Movement
-                if (this.keys['KeyW']) this.playerVelocity.z -= speed * sprint * dt;
-                if (this.keys['KeyS']) this.playerVelocity.z += speed * sprint * dt;
-                if (this.keys['KeyA']) this.playerVelocity.x -= speed * sprint * dt;
-                if (this.keys['KeyD']) this.playerVelocity.x += speed * sprint * dt;
+                let moveX = 0, moveZ = 0;
+                if (this.keys['KeyW']) moveZ -= 1;
+                if (this.keys['KeyS']) moveZ += 1;
+                if (this.keys['KeyA']) moveX -= 1;
+                if (this.keys['KeyD']) moveX += 1;
+                
+                if (moveX !== 0 || moveZ !== 0) {
+                    // Normalize diagonal movement
+                    const len = Math.sqrt(moveX * moveX + moveZ * moveZ);
+                    moveX /= len;
+                    moveZ /= len;
+                    
+                    this.playerVelocity.x = moveX * speed * sprint;
+                    this.playerVelocity.z = moveZ * speed * sprint;
+                    
+                    // Rotate car to face movement direction instantly
+                    this.player.rotation.y = Math.atan2(moveX, moveZ);
+                } else {
+                    // Friction when not pressing keys
+                    this.playerVelocity.x *= 0.85;
+                    this.playerVelocity.z *= 0.85;
+                }
                 
                 // Jump
                 if (this.keys['Space'] && this.isGrounded) {
@@ -1199,14 +1242,16 @@
                 
                 // Collision detection
                 this.isGrounded = false;
+                const playerBox = new THREE.Box3().setFromObject(this.player);
+                const playerHeight = playerBox.max.y - playerBox.min.y;
+                const playerBottomOffset = this.player.position.y - playerBox.min.y;
+                
                 this.platforms.forEach(platform => {
-                    const playerBox = new THREE.Box3().setFromObject(this.player);
                     const platformBox = new THREE.Box3().setFromObject(platform);
                     
                     if (playerBox.intersectsBox(platformBox)) {
-                        // Simple ground collision
-                        if (this.playerVelocity.y < 0) {
-                            this.player.position.y = platform.position.y + platform.geometry.parameters.height / 2 + 1;
+                        if (this.playerVelocity.y <= 0) {
+                            this.player.position.y = platformBox.max.y + playerBottomOffset;
                             this.playerVelocity.y = 0;
                             this.isGrounded = true;
                         }
@@ -1256,11 +1301,11 @@
                     );
                 }
                 
-                // HQ check
-                if (this.jrodHQ) {
+                // HQ check - car lift animation
+                if (this.jrodHQ && !this.liftAnimating) {
                     const distToHQ = this.player.position.distanceTo(this.jrodHQ.position);
                     if (distToHQ < 5 && this.state.okrsCollected >= this.currentLevelData.okrGoal) {
-                        this.completeLevel();
+                        this.playLiftAnimation();
                     }
                 }
                 
@@ -1888,6 +1933,61 @@
                 this.playerVelocity = { x: 0, y: 0, z: 0 };
                 this.isGrounded = false;
                 console.log('Player respawned after falling');
+            }
+            
+            playLiftAnimation() {
+                this.liftAnimating = true;
+                this.paused = true;
+                
+                // Move car onto the lift
+                const liftPos = this.jrodHQ.position.clone();
+                this.player.position.set(liftPos.x, liftPos.y + 0.5, liftPos.z);
+                this.player.rotation.y = 0;
+                this.playerVelocity = { x: 0, y: 0, z: 0 };
+                
+                // Find the lift platform inside the group
+                let liftPlatformMesh = null;
+                this.jrodHQ.traverse(child => {
+                    if (child.name === 'liftPlatform') liftPlatformMesh = child;
+                });
+                
+                const startY = this.player.position.y;
+                const liftHeight = 4;
+                const duration = 1500;
+                const startTime = Date.now();
+                
+                const animateLift = () => {
+                    const elapsed = Date.now() - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    // Ease-out curve
+                    const ease = 1 - Math.pow(1 - progress, 3);
+                    const currentY = startY + liftHeight * ease;
+                    
+                    this.player.position.y = currentY;
+                    if (liftPlatformMesh) {
+                        liftPlatformMesh.position.y = 0.3 + liftHeight * ease;
+                    }
+                    
+                    // Keep rendering during animation
+                    this.camera.position.x = this.player.position.x + this.cameraOffset.x;
+                    this.camera.position.y = this.player.position.y + this.cameraOffset.y;
+                    this.camera.position.z = this.player.position.z + this.cameraOffset.z;
+                    this.camera.lookAt(this.player.position);
+                    this.renderer.render(this.scene, this.camera);
+                    
+                    if (progress < 1) {
+                        requestAnimationFrame(animateLift);
+                    } else {
+                        // Animation done — complete the level
+                        setTimeout(() => {
+                            this.liftAnimating = false;
+                            this.paused = false;
+                            this.completeLevel();
+                        }, 500);
+                    }
+                };
+                
+                animateLift();
             }
             
             completeLevel() {
