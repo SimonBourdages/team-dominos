@@ -1682,99 +1682,111 @@
                     ctx.fill(); ctx.stroke();
                 }
                 
-                const offsetX = canvas.width / 2;
-                const offsetY = canvas.height / 2;
+                const halfW = canvas.width / 2;
+                const halfH = canvas.height / 2;
                 
-                // Camera follows player smoothly
-                if (!this._camX) { this._camX = this.player.x; this._camZ = this.player.z; }
-                this._camX += (this.player.x - this._camX) * 0.08;
-                this._camZ += (this.player.z - this._camZ) * 0.08;
+                // World-to-screen: project world coords to isometric screen coords
+                // Camera tracks player exactly (no lerp = no grid drift)
+                const camWX = this.player.x;
+                const camWZ = this.player.z;
                 
-                // Draw office floor with cubicles
+                const worldToScreen = (wx, wy, wz) => {
+                    const rx = wx - camWX;
+                    const rz = wz - camWZ;
+                    return {
+                        x: halfW + (rx - rz) * 32,
+                        y: halfH + (rx + rz) * 16 - wy * 24
+                    };
+                };
+                
+                // Draw office floor tiles
                 const tileSize = 32;
-                const gridRange = 15;
+                const gridRange = 16;
+                const baseWX = Math.floor(camWX);
+                const baseWZ = Math.floor(camWZ);
                 
-                const camX = this._camX;
-                const camZ = this._camZ;
-                
-                for (let wx = Math.floor(camX) - gridRange; wx <= Math.floor(camX) + gridRange; wx++) {
-                    for (let wz = Math.floor(camZ) - gridRange; wz <= Math.floor(camZ) + gridRange; wz++) {
-                        const pos = this.toIso(wx - camX, 0, wz - camZ);
-                        const sx = offsetX + pos.x;
-                        const sy = offsetY + pos.y;
+                for (let dx = -gridRange; dx <= gridRange; dx++) {
+                    for (let dz = -gridRange; dz <= gridRange; dz++) {
+                        const wx = baseWX + dx;
+                        const wz = baseWZ + dz;
+                        const s = worldToScreen(wx, 0, wz);
                         
-                        // Skip tiles off screen
-                        if (sx < -tileSize * 2 || sx > canvas.width + tileSize * 2 || sy < -tileSize * 2 || sy > canvas.height + tileSize * 2) continue;
+                        // Cull off-screen
+                        if (s.x < -80 || s.x > canvas.width + 80 || s.y < -80 || s.y > canvas.height + 80) continue;
                         
-                        // Carpet tile floor
+                        // Only draw tiles within map bounds (0..39)
+                        const inMap = wx >= 0 && wx < 40 && wz >= 0 && wz < 40;
+                        
+                        // Carpet tile
                         const dark = (wx + wz) % 2 === 0;
-                        ctx.fillStyle = dark ? '#6b7b8d' : '#7a8a9c';
-                        ctx.strokeStyle = '#5a6a7a';
-                        ctx.lineWidth = 0.5;
+                        ctx.fillStyle = inMap ? (dark ? '#6b7b8d' : '#7a8a9c') : '#3a4a5a';
                         ctx.beginPath();
-                        ctx.moveTo(sx, sy);
-                        ctx.lineTo(sx + tileSize, sy + tileSize / 2);
-                        ctx.lineTo(sx, sy + tileSize);
-                        ctx.lineTo(sx - tileSize, sy + tileSize / 2);
+                        ctx.moveTo(s.x, s.y);
+                        ctx.lineTo(s.x + tileSize, s.y + tileSize / 2);
+                        ctx.lineTo(s.x, s.y + tileSize);
+                        ctx.lineTo(s.x - tileSize, s.y + tileSize / 2);
                         ctx.closePath();
-                        ctx.fill(); ctx.stroke();
+                        ctx.fill();
+                        // Subtle grid lines
+                        ctx.strokeStyle = inMap ? '#5a6a7a' : '#2a3a4a';
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
                         
-                        // Cubicle walls - use seeded random from world coords for variety
-                        const seed = (wx * 7 + wz * 13) & 0xff;
-                        const hasCubicle = seed < 60 && wx >= 0 && wx <= 40 && wz >= 0 && wz <= 40;
+                        if (!inMap) continue;
                         
-                        if (hasCubicle && wx % 3 === 0) {
+                        // Cubicle walls (deterministic from world coords)
+                        const seed = ((wx * 7 + wz * 13) & 0xff);
+                        if (seed < 60 && wx % 3 === 0) {
                             ctx.fillStyle = '#b0b8c0';
                             ctx.strokeStyle = '#000';
                             ctx.lineWidth = 2;
                             ctx.beginPath();
-                            ctx.moveTo(sx - tileSize, sy + tileSize / 2);
-                            ctx.lineTo(sx - tileSize, sy + tileSize / 2 - 18);
-                            ctx.lineTo(sx, sy - 18);
-                            ctx.lineTo(sx, sy);
+                            ctx.moveTo(s.x - tileSize, s.y + tileSize / 2);
+                            ctx.lineTo(s.x - tileSize, s.y + tileSize / 2 - 18);
+                            ctx.lineTo(s.x, s.y - 18);
+                            ctx.lineTo(s.x, s.y);
                             ctx.closePath();
                             ctx.fill(); ctx.stroke();
                         }
-                        
-                        if (hasCubicle && wz % 3 === 0) {
+                        if (seed < 60 && wz % 3 === 0) {
                             ctx.fillStyle = '#a8b0b8';
                             ctx.strokeStyle = '#000';
                             ctx.lineWidth = 2;
                             ctx.beginPath();
-                            ctx.moveTo(sx, sy);
-                            ctx.lineTo(sx, sy - 18);
-                            ctx.lineTo(sx + tileSize, sy + tileSize / 2 - 18);
-                            ctx.lineTo(sx + tileSize, sy + tileSize / 2);
+                            ctx.moveTo(s.x, s.y);
+                            ctx.lineTo(s.x, s.y - 18);
+                            ctx.lineTo(s.x + tileSize, s.y + tileSize / 2 - 18);
+                            ctx.lineTo(s.x + tileSize, s.y + tileSize / 2);
                             ctx.closePath();
                             ctx.fill(); ctx.stroke();
                         }
                         
-                        // Desks + monitors scattered randomly
-                        if (seed > 180 && seed < 210 && wx >= 0 && wx <= 40 && wz >= 0 && wz <= 40) {
+                        // Desks
+                        if (seed > 180 && seed < 210) {
                             ctx.fillStyle = '#8B6914';
                             ctx.strokeStyle = '#5a4510';
                             ctx.lineWidth = 1.5;
                             ctx.beginPath();
-                            ctx.moveTo(sx, sy + 4);
-                            ctx.lineTo(sx + 14, sy + 11);
-                            ctx.lineTo(sx, sy + 18);
-                            ctx.lineTo(sx - 14, sy + 11);
+                            ctx.moveTo(s.x, s.y + 4);
+                            ctx.lineTo(s.x + 14, s.y + 11);
+                            ctx.lineTo(s.x, s.y + 18);
+                            ctx.lineTo(s.x - 14, s.y + 11);
                             ctx.closePath();
                             ctx.fill(); ctx.stroke();
-                            
+                            // Monitor
                             ctx.fillStyle = '#333';
-                            ctx.fillRect(sx - 4, sy + 2, 8, 6);
+                            ctx.fillRect(s.x - 4, s.y + 2, 8, 6);
                             ctx.fillStyle = '#4488ff';
-                            ctx.fillRect(sx - 3, sy + 3, 6, 4);
+                            ctx.fillRect(s.x - 3, s.y + 3, 6, 4);
                         }
                         
                         // Potted plants
-                        if (seed > 240 && wx >= 0 && wx <= 40 && wz >= 0 && wz <= 40) {
+                        if (seed > 240) {
                             ctx.fillStyle = '#6b4226';
-                            ctx.fillRect(sx - 3, sy + 10, 6, 6);
+                            ctx.fillRect(s.x - 3, s.y + 10, 6, 6);
                             ctx.fillStyle = '#228b22';
                             ctx.beginPath();
-                            ctx.arc(sx, sy + 6, 6, 0, Math.PI * 2);
+                            ctx.arc(s.x, s.y + 6, 6, 0, Math.PI * 2);
                             ctx.fill();
                         }
                     }
@@ -1783,15 +1795,13 @@
                 // Draw OKR coins
                 this.okrs.forEach(okr => {
                     if (!okr.collected) {
-                        const pos = this.toIso(okr.x - camX, okr.y, okr.z - camZ);
-                        const cx = offsetX + pos.x;
-                        const cy = offsetY + pos.y - 10;
+                        const s = worldToScreen(okr.x, okr.y, okr.z);
                         const bounce = Math.sin(this.gameTime * 3 + okr.x) * 4;
                         
-                        // Coin shadow
+                        // Shadow
                         ctx.fillStyle = 'rgba(0,0,0,0.2)';
                         ctx.beginPath();
-                        ctx.ellipse(cx, cy + 20, 12, 6, 0, 0, Math.PI * 2);
+                        ctx.ellipse(s.x, s.y + 10, 12, 6, 0, 0, Math.PI * 2);
                         ctx.fill();
                         
                         // Gold coin
@@ -1799,109 +1809,101 @@
                         ctx.strokeStyle = '#b8860b';
                         ctx.lineWidth = 3;
                         ctx.beginPath();
-                        ctx.arc(cx, cy + bounce, 14, 0, Math.PI * 2);
+                        ctx.arc(s.x, s.y - 10 + bounce, 14, 0, Math.PI * 2);
                         ctx.fill(); ctx.stroke();
                         
                         // Inner ring
                         ctx.strokeStyle = '#daa520';
                         ctx.lineWidth = 1.5;
                         ctx.beginPath();
-                        ctx.arc(cx, cy + bounce, 10, 0, Math.PI * 2);
+                        ctx.arc(s.x, s.y - 10 + bounce, 10, 0, Math.PI * 2);
                         ctx.stroke();
                         
                         // OKR text
-                        ctx.fillStyle = '#000000';
+                        ctx.fillStyle = '#000';
                         ctx.font = 'bold 9px Arial';
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
-                        ctx.fillText('OKR', cx, cy + bounce);
+                        ctx.fillText('OKR', s.x, s.y - 10 + bounce);
                         
                         // Sparkle
                         const sparkle = Math.sin(this.gameTime * 5 + okr.x * 2) * 0.5 + 0.5;
                         ctx.fillStyle = `rgba(255,255,200,${sparkle})`;
                         ctx.beginPath();
-                        ctx.arc(cx - 5, cy + bounce - 6, 2, 0, Math.PI * 2);
+                        ctx.arc(s.x - 5, s.y - 16 + bounce, 2, 0, Math.PI * 2);
                         ctx.fill();
                     }
                 });
                 
                 // Draw car lift goal
                 if (this.jrodHQ) {
-                    const hqPos = this.toIso(this.jrodHQ.x - camX, 0, this.jrodHQ.z - camZ);
-                    const hx = offsetX + hqPos.x;
-                    const hy = offsetY + hqPos.y;
+                    const s = worldToScreen(this.jrodHQ.x, 0, this.jrodHQ.z);
                     
-                    // Base
                     ctx.fillStyle = '#555';
                     ctx.strokeStyle = '#000';
                     ctx.lineWidth = 2;
-                    ctx.fillRect(hx - 25, hy - 5, 50, 10);
-                    ctx.strokeRect(hx - 25, hy - 5, 50, 10);
+                    ctx.fillRect(s.x - 25, s.y - 5, 50, 10);
+                    ctx.strokeRect(s.x - 25, s.y - 5, 50, 10);
                     
-                    // Pillars
                     ctx.fillStyle = '#888';
-                    ctx.fillRect(hx - 22, hy - 50, 6, 50);
-                    ctx.fillRect(hx + 16, hy - 50, 6, 50);
-                    ctx.strokeRect(hx - 22, hy - 50, 6, 50);
-                    ctx.strokeRect(hx + 16, hy - 50, 6, 50);
+                    ctx.fillRect(s.x - 22, s.y - 50, 6, 50);
+                    ctx.fillRect(s.x + 16, s.y - 50, 6, 50);
+                    ctx.strokeRect(s.x - 22, s.y - 50, 6, 50);
+                    ctx.strokeRect(s.x + 16, s.y - 50, 6, 50);
                     
-                    // Yellow stripes
                     ctx.fillStyle = '#ffcc00';
-                    for (let i = 0; i < 3; i++) {
-                        ctx.fillRect(hx - 20, hy - 10 - i * 15, 40, 4);
-                    }
+                    for (let i = 0; i < 3; i++) ctx.fillRect(s.x - 20, s.y - 10 - i * 15, 40, 4);
                     
-                    // Arrow
                     const arrowBounce = Math.sin(this.gameTime * 2) * 5;
                     ctx.fillStyle = '#00ff00';
                     ctx.beginPath();
-                    ctx.moveTo(hx, hy - 55 + arrowBounce);
-                    ctx.lineTo(hx - 8, hy - 45 + arrowBounce);
-                    ctx.lineTo(hx + 8, hy - 45 + arrowBounce);
+                    ctx.moveTo(s.x, s.y - 55 + arrowBounce);
+                    ctx.lineTo(s.x - 8, s.y - 45 + arrowBounce);
+                    ctx.lineTo(s.x + 8, s.y - 45 + arrowBounce);
                     ctx.fill();
+                    
+                    // Label
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 11px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('CAR LIFT', s.x, s.y - 58 + arrowBounce);
                 }
                 
-                // Draw AI workers (small robots)
+                // Draw AI workers
                 this.state.aiWorkers.forEach(worker => {
-                    const wPos = this.toIso(worker.x - camX, 0, worker.z - camZ);
-                    const wx = offsetX + wPos.x;
-                    const wy = offsetY + wPos.y - 15;
+                    const s = worldToScreen(worker.x, 0, worker.z);
+                    const wy = s.y - 15;
                     
-                    // Body
                     ctx.fillStyle = '#6a6aff';
                     ctx.strokeStyle = '#000';
                     ctx.lineWidth = 2;
-                    ctx.fillRect(wx - 8, wy - 10, 16, 20);
-                    ctx.strokeRect(wx - 8, wy - 10, 16, 20);
+                    ctx.fillRect(s.x - 8, wy - 10, 16, 20);
+                    ctx.strokeRect(s.x - 8, wy - 10, 16, 20);
                     
-                    // Head
                     ctx.fillStyle = '#8888ff';
                     ctx.beginPath();
-                    ctx.arc(wx, wy - 16, 8, 0, Math.PI * 2);
+                    ctx.arc(s.x, wy - 16, 8, 0, Math.PI * 2);
                     ctx.fill(); ctx.stroke();
                     
-                    // Eyes (LEDs)
                     ctx.fillStyle = '#00ff00';
-                    ctx.fillRect(wx - 4, wy - 18, 3, 3);
-                    ctx.fillRect(wx + 1, wy - 18, 3, 3);
+                    ctx.fillRect(s.x - 4, wy - 18, 3, 3);
+                    ctx.fillRect(s.x + 1, wy - 18, 3, 3);
                     
-                    // Antenna
                     ctx.strokeStyle = '#888';
                     ctx.lineWidth = 1;
                     ctx.beginPath();
-                    ctx.moveTo(wx, wy - 24);
-                    ctx.lineTo(wx, wy - 30);
+                    ctx.moveTo(s.x, wy - 24);
+                    ctx.lineTo(s.x, wy - 30);
                     ctx.stroke();
-                    ctx.fillStyle = '#ff0000';
+                    ctx.fillStyle = '#f00';
                     ctx.beginPath();
-                    ctx.arc(wx, wy - 30, 2, 0, Math.PI * 2);
+                    ctx.arc(s.x, wy - 30, 2, 0, Math.PI * 2);
                     ctx.fill();
                 });
                 
-                // Draw player car at its world position
-                const carPos = this.toIso(this.player.x - camX, 0, this.player.z - camZ);
-                const carScreenX = offsetX + carPos.x;
-                const carScreenY = offsetY + carPos.y - 15;
+                // Draw player car at screen center (camera tracks exactly)
+                const carScreenX = halfW;
+                const carScreenY = halfH - 15;
                 const worldAngle = this.player.angle || 0;
                 const isoAngle = worldAngle + Math.PI / 4;
                 ctx.save();
@@ -1959,6 +1961,23 @@
                 ctx.stroke();
                 
                 ctx.restore();
+                
+                // HUD overlay
+                ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                ctx.fillRect(10, canvas.height - 60, 250, 50);
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 14px monospace';
+                ctx.textAlign = 'left';
+                ctx.fillText(`OKR: ${this.state.okrsCollected} / ${this.currentLevelData.okrGoal}`, 20, canvas.height - 38);
+                ctx.fillText(`MP: ${Math.floor(this.state.currencies.mp)} | Workers: ${this.state.aiWorkers.length}`, 20, canvas.height - 20);
+                
+                // Mini arrow pointing to car lift when all OKRs collected
+                if (this.state.okrsCollected >= this.currentLevelData.okrGoal && this.jrodHQ) {
+                    ctx.fillStyle = '#00ff00';
+                    ctx.font = 'bold 18px monospace';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('▶ Drive to the Car Lift! ◀', canvas.width / 2, 30);
+                }
                 
                 // Draw spectators
                 this.drawAnimeSpectators();
