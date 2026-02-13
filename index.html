@@ -1065,6 +1065,11 @@
             
             setupPhase1() {
                 console.log('Setting up Phase 1 - 3D mode');
+                // Reset controls panel to default position
+                const ctrl = document.getElementById('controls');
+                ctrl.style.bottom = '20px'; ctrl.style.top = 'auto';
+                ctrl.style.left = '20px'; ctrl.style.right = 'auto';
+                ctrl.style.opacity = '1';
                 // Initialize Three.js
                 this.scene = new THREE.Scene();
                 this.scene.background = new THREE.Color(0x87ceeb);
@@ -1281,10 +1286,22 @@
                 document.getElementById('controlsText').innerHTML = 
                     'A/D - Move<br>SPACE - Jump<br>Collect OKR coins!';
                 document.getElementById('workers').style.display = 'block';
+                // Move controls panel to top-right so it doesn't cover the ground
+                const ctrl = document.getElementById('controls');
+                ctrl.style.bottom = 'auto';
+                ctrl.style.top = '20px';
+                ctrl.style.left = 'auto';
+                ctrl.style.right = '20px';
+                ctrl.style.opacity = '0.7';
                 this.updateWorkerUI();
             }
             
             setupPhase3() {
+                // Reset controls panel to default position
+                const ctrl = document.getElementById('controls');
+                ctrl.style.bottom = '20px'; ctrl.style.top = 'auto';
+                ctrl.style.left = '20px'; ctrl.style.right = 'auto';
+                ctrl.style.opacity = '1';
                 // If coming from Phase 2, canvas already supports 2D
                 // If somehow context is lost, create fresh canvas
                 if (!this.ctx) {
