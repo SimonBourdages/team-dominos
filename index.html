@@ -161,6 +161,11 @@
             50% { opacity: 0.5; }
         }
         
+        @keyframes flash {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
         #menu {
             position: fixed;
             top: 50%;
@@ -928,37 +933,201 @@
                 const ctx = this.ctx;
                 const canvas = this.canvas;
                 
-                // Clear
-                ctx.fillStyle = '#1a1a2e';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                // Draw anime-style background
+                this.drawAnimeBackground();
                 
                 // Center camera on player
                 const offsetX = canvas.width / 2;
                 const offsetY = canvas.height / 2;
                 
-                // Draw platforms
+                // Draw platforms with anime outline
                 this.platforms.forEach(p => {
-                    this.drawIsoTile(p.x, p.y, p.z, '#4a4a4a', offsetX, offsetY);
+                    const pos = this.toIso(p.x - this.player.x, p.y, p.z - this.player.z);
+                    this.drawAnimeTile(offsetX + pos.x, offsetY + pos.y, '#4a4a4a');
                 });
                 
-                // Draw OKRs
+                // Draw OKRs with sparkles
                 this.okrs.forEach(okr => {
                     if (!okr.collected) {
-                        this.drawIsoTile(okr.x, okr.y, okr.z, '#ffd700', offsetX, offsetY);
+                        const pos = this.toIso(okr.x - this.player.x, okr.y, okr.z - this.player.z);
+                        this.drawAnimeTile(offsetX + pos.x, offsetY + pos.y, '#ffd700');
+                        this.drawAnimeSparkles(offsetX + pos.x, offsetY + pos.y, this.gameTime);
                     }
                 });
                 
                 // Draw HQ
-                this.drawIsoTile(this.jrodHQ.x, this.jrodHQ.y, this.jrodHQ.z, '#00ffff', offsetX, offsetY);
-                this.drawIsoTile(this.jrodHQ.x, this.jrodHQ.y + 1, this.jrodHQ.z, '#00ffff', offsetX, offsetY);
+                const hqPos = this.toIso(this.jrodHQ.x - this.player.x, this.jrodHQ.y, this.jrodHQ.z - this.player.z);
+                this.drawAnimeTile(offsetX + hqPos.x, offsetY + hqPos.y, '#00ffff');
+                this.drawAnimeTile(offsetX + hqPos.x, offsetY + hqPos.y + 16, '#00ffff');
                 
-                // Draw player
-                this.drawIsoTile(this.player.x, this.player.y + 1, this.player.z, '#00ff00', offsetX, offsetY);
+                // Draw player character (anime style)
+                const charX = offsetX;
+                const charY = offsetY;
+                this.drawAnimeCharacter(charX, charY, this.keys);
+                
+                // Speed lines when moving
+                if (this.keys['w'] || this.keys['a'] || this.keys['s'] || this.keys['d']) {
+                    this.drawSpeedLines(charX, charY);
+                }
                 
                 // Draw AI workers
                 this.state.aiWorkers.forEach(worker => {
-                    this.drawIsoTile(worker.x, worker.y + 1, worker.z, '#ff00ff', offsetX, offsetY);
+                    const wPos = this.toIso(worker.x - this.player.x, worker.y + 1, worker.z - this.player.z);
+                    this.drawAnimeWorker(offsetX + wPos.x, offsetY + wPos.y);
                 });
+            }
+            
+            drawAnimeBackground() {
+                const ctx = this.ctx;
+                const canvas = this.canvas;
+                
+                // Gradient sky (anime style)
+                const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                gradient.addColorStop(0, '#87CEEB');
+                gradient.addColorStop(0.5, '#FFB6C1');
+                gradient.addColorStop(1, '#FFA07A');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Simple puffy anime clouds
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 3;
+                const cloudTime = this.gameTime * 10;
+                for (let i = 0; i < 5; i++) {
+                    const x = ((cloudTime + i * 200) % (canvas.width + 200)) - 100;
+                    const y = 50 + i * 80;
+                    this.drawCloud(x, y);
+                }
+            }
+            
+            drawCloud(x, y) {
+                const ctx = this.ctx;
+                ctx.beginPath();
+                ctx.arc(x, y, 30, 0, Math.PI * 2);
+                ctx.arc(x + 25, y, 35, 0, Math.PI * 2);
+                ctx.arc(x + 50, y, 30, 0, Math.PI * 2);
+                ctx.arc(x + 25, y - 20, 25, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            }
+            
+            drawAnimeTile(x, y, color) {
+                const ctx = this.ctx;
+                
+                // Draw with thick black outline
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 4;
+                ctx.fillStyle = color;
+                
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x + 32, y + 16);
+                ctx.lineTo(x, y + 32);
+                ctx.lineTo(x - 32, y + 16);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+            }
+            
+            drawAnimeCharacter(x, y, keys) {
+                const ctx = this.ctx;
+                const charW = 48;
+                const charH = 72;
+                const charX = x - charW / 2;
+                const charY = y - charH / 2;
+                
+                // Black outline
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 4;
+                ctx.strokeRect(charX - 2, charY - 2, charW + 4, charH + 4);
+                
+                // Character body
+                ctx.fillStyle = '#E21A2C';
+                ctx.fillRect(charX, charY, charW, charH);
+                
+                // Anime eyes (large and expressive)
+                ctx.fillStyle = '#FFFFFF';
+                ctx.beginPath();
+                ctx.arc(charX + 12, charY + 20, 8, 0, Math.PI * 2);
+                ctx.arc(charX + 36, charY + 20, 8, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Pupils
+                ctx.fillStyle = '#000000';
+                ctx.beginPath();
+                ctx.arc(charX + 12, charY + 20, 4, 0, Math.PI * 2);
+                ctx.arc(charX + 36, charY + 20, 4, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Mouth (simple)
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(charX + 24, charY + 35, 10, 0, Math.PI);
+                ctx.stroke();
+            }
+            
+            drawAnimeWorker(x, y) {
+                const ctx = this.ctx;
+                const size = 32;
+                
+                // Outline
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 3;
+                ctx.fillStyle = '#ff00ff';
+                ctx.fillRect(x - size/2, y - size/2, size, size);
+                ctx.strokeRect(x - size/2, y - size/2, size, size);
+                
+                // Simple face
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(x - 8, y - 8, 4, 4);
+                ctx.fillRect(x + 4, y - 8, 4, 4);
+            }
+            
+            drawSpeedLines(x, y) {
+                const ctx = this.ctx;
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.lineWidth = 4;
+                
+                for (let i = 0; i < 6; i++) {
+                    const offsetX = x - 60 - (i * 20);
+                    const offsetY = y - 20 + (Math.random() * 60);
+                    ctx.beginPath();
+                    ctx.moveTo(offsetX, offsetY);
+                    ctx.lineTo(offsetX - 50, offsetY);
+                    ctx.stroke();
+                }
+            }
+            
+            drawAnimeSparkles(x, y, time) {
+                const ctx = this.ctx;
+                ctx.fillStyle = '#FFD700';
+                
+                for (let i = 0; i < 4; i++) {
+                    const angle = (time * 50 + i * 90) % 360;
+                    const rad = angle * Math.PI / 180;
+                    const dist = 25 + Math.sin(time * 3 + i) * 8;
+                    const sx = x + Math.cos(rad) * dist;
+                    const sy = y + Math.sin(rad) * dist;
+                    
+                    // 4-pointed star
+                    ctx.save();
+                    ctx.translate(sx, sy);
+                    ctx.rotate(angle * Math.PI / 180);
+                    ctx.beginPath();
+                    ctx.moveTo(0, -6);
+                    ctx.lineTo(1.5, -1.5);
+                    ctx.lineTo(6, 0);
+                    ctx.lineTo(1.5, 1.5);
+                    ctx.lineTo(0, 6);
+                    ctx.lineTo(-1.5, 1.5);
+                    ctx.lineTo(-6, 0);
+                    ctx.lineTo(-1.5, -1.5);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                }
             }
             
             drawIsoTile(x, y, z, color, offsetX, offsetY) {
@@ -1014,34 +1183,38 @@
                 const ctx = this.ctx;
                 const canvas = this.canvas;
                 
-                // Dark background
+                // CRITICAL: Pixel-perfect rendering
+                ctx.imageSmoothingEnabled = false;
+                
+                // Dark pixel background
                 ctx.fillStyle = '#0a0a0a';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 
-                // Grid effect
-                ctx.strokeStyle = 'rgba(0, 200, 255, 0.1)';
+                // Pixel grid (every 3 pixels)
+                const pixelScale = 3;
+                ctx.strokeStyle = 'rgba(0, 200, 255, 0.15)';
                 ctx.lineWidth = 1;
-                for (let i = 0; i < canvas.width; i += 50) {
+                for (let i = 0; i < canvas.width; i += 60) {
                     ctx.beginPath();
                     ctx.moveTo(i, 0);
                     ctx.lineTo(i, canvas.height);
                     ctx.stroke();
                 }
-                for (let i = 0; i < canvas.height; i += 50) {
+                for (let i = 0; i < canvas.height; i += 60) {
                     ctx.beginPath();
                     ctx.moveTo(0, i);
                     ctx.lineTo(canvas.width, i);
                     ctx.stroke();
                 }
                 
-                // Draw automation nodes
+                // Draw automation nodes as pixel blocks
                 this.automationNodes.forEach((node, i) => {
-                    this.drawNode(node.x, node.y, node.rate, node.name);
+                    this.drawPixelNode(node.x, node.y, node.rate, node.name);
                     
-                    // Connect to next node
+                    // Connect with pixel line
                     if (i < this.automationNodes.length - 1) {
                         const next = this.automationNodes[i + 1];
-                        this.drawConnection(node.x, node.y, next.x, next.y);
+                        this.drawPixelConnection(node.x, node.y, next.x, next.y);
                     }
                 });
                 
@@ -1049,87 +1222,126 @@
                 const centerX = canvas.width / 2;
                 const centerY = canvas.height / 2;
                 
-                // Production rate display
+                // Production rate display (pixel font style)
                 ctx.fillStyle = '#0ff';
                 ctx.font = 'bold 48px monospace';
                 ctx.textAlign = 'center';
-                ctx.fillText(`${Math.floor(rate)}/s`, centerX, centerY - 100);
+                ctx.fillText(`${Math.floor(rate)}/s`, Math.floor(centerX), Math.floor(centerY - 100));
                 
-                // Progress circle
+                // Pixel progress square
                 const progress = this.state.okrsCollected / this.currentLevelData.okrGoal;
-                const radius = 100;
+                const size = 120;
                 
+                // Outer square
                 ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
-                ctx.lineWidth = 10;
-                ctx.beginPath();
-                ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-                ctx.stroke();
+                ctx.lineWidth = 6;
+                ctx.strokeRect(
+                    Math.floor(centerX - size/2), 
+                    Math.floor(centerY - size/2), 
+                    size, 
+                    size
+                );
                 
-                ctx.strokeStyle = '#0ff';
-                ctx.lineWidth = 10;
-                ctx.beginPath();
-                ctx.arc(centerX, centerY, radius, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
-                ctx.stroke();
+                // Progress fill (pixelated)
+                const fillHeight = Math.floor(size * progress);
+                ctx.fillStyle = '#0ff';
+                ctx.fillRect(
+                    Math.floor(centerX - size/2 + 6),
+                    Math.floor(centerY + size/2 - fillHeight - 6),
+                    size - 12,
+                    fillHeight
+                );
                 
-                // OKR count
+                // OKR count (pixel style)
                 ctx.fillStyle = '#fff';
-                ctx.font = 'bold 24px monospace';
+                ctx.font = 'bold 20px monospace';
                 ctx.fillText(
                     `${this.formatNumber(this.state.okrsCollected)} / ${this.formatNumber(this.currentLevelData.okrGoal)}`,
-                    centerX,
-                    centerY + 10
+                    Math.floor(centerX),
+                    Math.floor(centerY + 10)
                 );
+                
+                // CRT scanlines effect
+                this.drawScanlines();
             }
             
-            drawNode(x, y, rate, name) {
+            drawPixelNode(x, y, rate, name) {
                 const ctx = this.ctx;
                 
-                // Glow
-                const gradient = ctx.createRadialGradient(x, y, 0, x, y, 40);
-                gradient.addColorStop(0, 'rgba(255, 215, 0, 0.8)');
-                gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
-                ctx.fillStyle = gradient;
-                ctx.beginPath();
-                ctx.arc(x, y, 40, 0, Math.PI * 2);
-                ctx.fill();
+                // Pixelated glow
+                const glowSize = 48;
+                ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
+                ctx.fillRect(
+                    Math.floor(x - glowSize/2),
+                    Math.floor(y - glowSize/2),
+                    glowSize,
+                    glowSize
+                );
                 
-                // Node circle
+                // Main pixel block (16x16)
+                const blockSize = 24;
                 ctx.fillStyle = '#ffd700';
-                ctx.beginPath();
-                ctx.arc(x, y, 25, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.fillRect(
+                    Math.floor(x - blockSize/2),
+                    Math.floor(y - blockSize/2),
+                    blockSize,
+                    blockSize
+                );
                 
-                // Rate text
-                ctx.fillStyle = '#000';
-                ctx.font = 'bold 14px monospace';
-                ctx.textAlign = 'center';
-                ctx.fillText(`${rate}/s`, x, y);
+                // Pixel border
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(
+                    Math.floor(x - blockSize/2),
+                    Math.floor(y - blockSize/2),
+                    blockSize,
+                    blockSize
+                );
                 
-                // Name
+                // Rate text (pixel font)
                 ctx.fillStyle = '#fff';
-                ctx.font = '12px monospace';
-                ctx.fillText(name, x, y + 45);
+                ctx.font = 'bold 12px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(`+${rate}`, Math.floor(x), Math.floor(y + 30));
             }
             
-            drawConnection(x1, y1, x2, y2) {
+            drawPixelConnection(x1, y1, x2, y2) {
                 const ctx = this.ctx;
                 
-                ctx.strokeStyle = 'rgba(0, 200, 255, 0.6)';
-                ctx.lineWidth = 3;
+                // Pixelated line
+                ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)';
+                ctx.lineWidth = 4;
                 ctx.beginPath();
-                ctx.moveTo(x1, y1);
-                ctx.lineTo(x2, y2);
+                ctx.moveTo(Math.floor(x1), Math.floor(y1));
+                ctx.lineTo(Math.floor(x2), Math.floor(y2));
                 ctx.stroke();
                 
-                // Animated particle
-                const t = (performance.now() / 1000) % 1;
-                const px = x1 + (x2 - x1) * t;
-                const py = y1 + (y2 - y1) * t;
+                // Animated pixel dots
+                const dist = Math.sqrt((x2-x1)**2 + (y2-y1)**2);
+                const steps = Math.floor(dist / 30);
+                const animOffset = (this.gameTime * 50) % 30;
                 
-                ctx.fillStyle = '#0ff';
-                ctx.beginPath();
-                ctx.arc(px, py, 5, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.fillStyle = '#00ffff';
+                for (let i = 0; i < steps; i++) {
+                    const t = (i * 30 + animOffset) / dist;
+                    if (t <= 1) {
+                        const px = Math.floor(x1 + (x2 - x1) * t);
+                        const py = Math.floor(y1 + (y2 - y1) * t);
+                        ctx.fillRect(px - 3, py - 3, 6, 6);
+                    }
+                }
+            }
+            
+            drawScanlines() {
+                const ctx = this.ctx;
+                const canvas = this.canvas;
+                
+                ctx.globalAlpha = 0.15;
+                ctx.fillStyle = '#000000';
+                for (let y = 0; y < canvas.height; y += 6) {
+                    ctx.fillRect(0, y, canvas.width, 2);
+                }
+                ctx.globalAlpha = 1.0;
             }
             
             formatNumber(num) {
@@ -1197,38 +1409,52 @@
                 
                 cutscene.style.display = 'flex';
                 cutscene.className = '';
-                cutscene.style.background = '#fff';
-                text.style.color = '#000';
+                cutscene.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                text.style.color = '#fff';
+                text.style.fontSize = '48px';
+                text.style.textShadow = '0 0 20px rgba(255,255,255,0.8)';
                 
                 const messages = [
-                    'EVOLUTION INITIATED',
-                    'Manual processes... obsolete',
-                    'Delegating to AI systems',
-                    'PHASE 2: MANAGEMENT MODE'
+                    '⭐ EVOLUTION INITIATED ⭐',
+                    'Manual processes... OBSOLETE',
+                    'Transitioning to ANIME DIMENSION',
+                    '✨ PHASE 2: TEAM MANAGER MODE ✨'
                 ];
                 
                 let i = 0;
                 const showMessage = () => {
                     if (i < messages.length) {
                         text.textContent = messages[i];
+                        
+                        // Flash effect on last message
+                        if (i === messages.length - 1) {
+                            cutscene.style.animation = 'flash 0.5s infinite';
+                        }
+                        
                         i++;
-                        setTimeout(showMessage, 2000);
+                        setTimeout(showMessage, 2500);
                     } else {
-                        // Apply evolution changes
-                        this.state.currencies.mp = 0;
-                        this.state.currencies.dp = 0;
+                        // Dramatic transition effect
+                        cutscene.style.animation = 'none';
+                        text.textContent = '🌸 ENTERING ANIME WORLD 🌸';
                         
-                        // Keep 50% of stats
-                        Object.keys(this.state.playerStats).forEach(key => {
-                            if (typeof this.state.playerStats[key] === 'number') {
-                                this.state.playerStats[key] *= 0.5;
-                            }
-                        });
-                        
-                        cutscene.style.display = 'none';
-                        this.setupPhase2();
-                        this.loadLevel(6);
-                        this.paused = false;
+                        setTimeout(() => {
+                            // Apply evolution changes
+                            this.state.currencies.mp = 0;
+                            this.state.currencies.dp = 0;
+                            
+                            // Keep 50% of stats
+                            Object.keys(this.state.playerStats).forEach(key => {
+                                if (typeof this.state.playerStats[key] === 'number') {
+                                    this.state.playerStats[key] *= 0.5;
+                                }
+                            });
+                            
+                            cutscene.style.display = 'none';
+                            this.setupPhase2();
+                            this.loadLevel(6);
+                            this.paused = false;
+                        }, 2000);
                     }
                 };
                 
@@ -1245,29 +1471,58 @@
                 cutscene.className = 'glitch';
                 cutscene.style.background = '#000';
                 text.style.color = '#0ff';
+                text.style.fontSize = '42px';
+                text.style.textShadow = '0 0 10px #0ff, 0 0 20px #0ff';
                 
                 const messages = [
                     '⚠ SYSTEM OVERLOAD ⚠',
-                    'Manual control... unnecessary',
-                    'Automation protocols engaged',
-                    'PHASE 3: SINGULARITY MODE'
+                    'Entering RETRO DIMENSION',
+                    'Manual control... UNNECESSARY',
+                    '█ PHASE 3: AUTOMATION SINGULARITY █'
                 ];
                 
                 let i = 0;
+                let pixelation = 1;
+                
                 const showMessage = () => {
                     if (i < messages.length) {
                         text.textContent = messages[i];
-                        i++;
-                        setTimeout(showMessage, 2000);
-                    } else {
-                        // Apply evolution changes
-                        this.state.currencies.ac = 0;
-                        this.state.currencies.mp = 0;
                         
-                        cutscene.style.display = 'none';
-                        this.setupPhase3();
-                        this.loadLevel(11);
-                        this.paused = false;
+                        // Progressive pixelation effect
+                        if (i > 1) {
+                            this.ctx.imageSmoothingEnabled = false;
+                            pixelation += 0.3;
+                        }
+                        
+                        i++;
+                        setTimeout(showMessage, 2500);
+                    } else {
+                        // Pixelation transition
+                        text.textContent = '▓▒░ ENTERING THE GRID ░▒▓';
+                        
+                        const pixelateInterval = setInterval(() => {
+                            pixelation += 0.2;
+                            
+                            if (pixelation >= 3) {
+                                clearInterval(pixelateInterval);
+                                
+                                setTimeout(() => {
+                                    // Apply evolution changes
+                                    this.state.currencies.ac = 0;
+                                    this.state.currencies.mp = 0;
+                                    
+                                    cutscene.style.display = 'none';
+                                    this.setupPhase3();
+                                    this.loadLevel(11);
+                                    this.paused = false;
+                                }, 1000);
+                            }
+                        }, 150);
+                    }
+                };
+                
+                showMessage();
+            }
                     }
                 };
                 
