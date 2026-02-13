@@ -1,0 +1,1429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Team Dominos - Digital Transformation Journey</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+        }
+        
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px;
+            pointer-events: none;
+            z-index: 100;
+        }
+        
+        #stats {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border: 2px solid #0ff;
+            border-radius: 5px;
+            display: inline-block;
+            pointer-events: auto;
+        }
+        
+        #levelInfo {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border: 2px solid #ff0;
+            border-radius: 5px;
+            pointer-events: auto;
+        }
+        
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border: 2px solid #0f0;
+            border-radius: 5px;
+            pointer-events: auto;
+            max-width: 300px;
+        }
+        
+        .stat-bar {
+            height: 20px;
+            background: #222;
+            border: 1px solid #fff;
+            margin: 5px 0;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #0ff, #00f);
+            transition: width 0.3s;
+        }
+        
+        .stat-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 12px;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px #000;
+        }
+        
+        button {
+            background: #0ff;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            border-radius: 3px;
+            pointer-events: auto;
+        }
+        
+        button:hover {
+            background: #0dd;
+            transform: scale(1.05);
+        }
+        
+        button:disabled {
+            background: #444;
+            color: #666;
+            cursor: not-allowed;
+        }
+        
+        #cutscene {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #fff;
+            z-index: 1000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            animation: fadeIn 1s;
+        }
+        
+        #cutscene.glitch {
+            animation: glitchEffect 0.5s;
+            background: #000;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes glitchEffect {
+            0%, 100% { transform: translate(0); }
+            20% { transform: translate(-5px, 5px); }
+            40% { transform: translate(-5px, -5px); }
+            60% { transform: translate(5px, 5px); }
+            80% { transform: translate(5px, -5px); }
+        }
+        
+        .cutscene-text {
+            font-size: 48px;
+            font-weight: bold;
+            margin: 20px;
+            text-align: center;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        #menu {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            padding: 40px;
+            border: 3px solid #0ff;
+            border-radius: 10px;
+            z-index: 500;
+            display: none;
+            text-align: center;
+        }
+        
+        #menu h1 {
+            color: #0ff;
+            margin-bottom: 20px;
+            font-size: 36px;
+        }
+        
+        #menu p {
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        
+        .glow {
+            text-shadow: 0 0 10px currentColor;
+        }
+        
+        #workers {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border: 2px solid #f0f;
+            border-radius: 5px;
+            max-width: 300px;
+            max-height: 300px;
+            overflow-y: auto;
+            pointer-events: auto;
+        }
+        
+        .worker-item {
+            background: rgba(255, 0, 255, 0.2);
+            padding: 8px;
+            margin: 5px 0;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        
+        #buildings {
+            position: fixed;
+            top: 50%;
+            right: 20px;
+            transform: translateY(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border: 2px solid #fa0;
+            border-radius: 5px;
+            max-width: 250px;
+            pointer-events: auto;
+        }
+        
+        .building-btn {
+            width: 100%;
+            margin: 3px 0;
+            background: #fa0;
+            font-size: 11px;
+            padding: 8px;
+        }
+        
+        .building-btn:hover {
+            background: #fc0;
+        }
+        
+        .building-btn.selected {
+            background: #f00;
+            box-shadow: 0 0 10px #f00;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="ui">
+        <div id="stats">
+            <div><strong class="glow">Level <span id="currentLevel">1</span></strong> - Phase <span id="currentPhase">1</span></div>
+            <div>OKRs: <span id="okrCount">0</span> / <span id="okrGoal">3</span></div>
+            <div class="stat-bar">
+                <div class="stat-fill" id="okrProgress"></div>
+                <div class="stat-text"><span id="okrPercent">0</span>%</div>
+            </div>
+            <div style="margin-top: 10px;">
+                <span id="currencyDisplay">DP: <span id="dpAmount">0</span></span>
+            </div>
+            <div style="margin-top: 5px; font-size: 12px;">
+                Total OKRs: <span id="totalOKRs">0</span>
+            </div>
+        </div>
+    </div>
+    
+    <div id="levelInfo">
+        <div><strong>Objective:</strong></div>
+        <div id="objective">Collect all OKRs and reach Jrod HQ!</div>
+        <div style="margin-top: 10px; font-size: 12px;" id="phaseDesc">
+            <strong>Phase 1:</strong> Manual Collection
+        </div>
+    </div>
+    
+    <div id="controls">
+        <div><strong>Controls:</strong></div>
+        <div style="font-size: 12px; margin-top: 5px;">
+            <div id="controlsText">
+                WASD - Move<br>
+                SPACE - Jump<br>
+                SHIFT - Sprint (unlocked L3)
+            </div>
+        </div>
+        <div style="margin-top: 10px;">
+            <button id="saveBtn" onclick="game.saveGame()">Save</button>
+            <button id="nextBtn" onclick="game.skipToNextLevel()" style="font-size: 10px;">Skip Level</button>
+        </div>
+    </div>
+    
+    <div id="workers" style="display: none;">
+        <div><strong>AI Workers:</strong></div>
+        <div id="workerList"></div>
+        <button onclick="game.hireWorker()" id="hireBtn">Hire Worker (Cost: <span id="hireCost">50</span> MP)</button>
+    </div>
+    
+    <div id="buildings" style="display: none;">
+        <div><strong>Automation:</strong></div>
+        <div id="buildingList"></div>
+    </div>
+    
+    <div id="menu">
+        <h1>TEAM DOMINOS</h1>
+        <p>A Digital Transformation Journey</p>
+        <p style="margin-top: 20px;">Evolve through 3 phases of productivity:</p>
+        <p>🎮 Levels 1-5: Manual Platforming</p>
+        <p>🤖 Levels 6-10: AI Management</p>
+        <p>⚡ Levels 11-15: Full Automation</p>
+        <button onclick="game.startGame()" style="margin-top: 20px;">START GAME</button>
+        <button onclick="game.loadGame()">LOAD GAME</button>
+    </div>
+    
+    <div id="cutscene">
+        <div class="cutscene-text" id="cutsceneText"></div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+        
+        class TeamDominosGame {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+                
+                this.state = {
+                    currentLevel: 1,
+                    phase: 1,
+                    renderMode: '3D',
+                    currencies: { dp: 0, mp: 0, ac: 0 },
+                    totalOKRs: 0,
+                    playerStats: {
+                        speed: 15,
+                        jump: 18,
+                        capacity: 1,
+                        sprint: 0,
+                        autoCollect: 0
+                    },
+                    aiWorkers: [],
+                    buildings: [],
+                    completedLevels: [],
+                    okrsCollected: 0
+                };
+                
+                this.keys = {};
+                this.gameStarted = false;
+                this.paused = false;
+                
+                this.levelConfigs = this.initLevelConfigs();
+                this.currentLevelData = null;
+                
+                // Three.js objects
+                this.scene = null;
+                this.camera = null;
+                this.renderer = null;
+                this.player = null;
+                this.playerVelocity = { x: 0, y: 0, z: 0 };
+                this.isGrounded = false;
+                this.canDoubleJump = false;
+                this.hasDoubleJumped = false;
+                
+                // 2D Canvas context
+                this.ctx = null;
+                
+                // Camera offset for 3D
+                this.cameraOffset = { x: 0, y: 5, z: 10 };
+                
+                // Game objects
+                this.okrs = [];
+                this.platforms = [];
+                this.jrodHQ = null;
+                
+                // Time
+                this.lastTime = performance.now();
+                this.deltaTime = 0;
+                this.gameTime = 0;
+                
+                // AI Workers
+                this.workerIdCounter = 0;
+                this.hireCost = 50;
+                
+                // Buildings
+                this.buildingIdCounter = 0;
+                this.automationNodes = [];
+                this.selectedBuilding = null;
+                
+                this.setupEventListeners();
+                this.showMenu();
+            }
+            
+            initLevelConfigs() {
+                return {
+                    1: { okrGoal: 3, reward: 10, currency: 'dp', description: 'Tutorial - Learn the basics', boss: false },
+                    2: { okrGoal: 5, reward: 15, currency: 'dp', description: 'Navigate gaps', boss: false },
+                    3: { okrGoal: 7, reward: 20, currency: 'dp', description: 'Avoid obstacles', boss: false, unlock: 'sprint' },
+                    4: { okrGoal: 10, reward: 30, currency: 'dp', description: 'Vertical challenge', boss: false, unlock: 'doubleJump' },
+                    5: { okrGoal: 15, reward: 50, currency: 'dp', description: 'BOSS: The Bureaucrat', boss: true, evolution: 1 },
+                    6: { okrGoal: 10, reward: 30, currency: 'mp', description: 'First AI hire', boss: false },
+                    7: { okrGoal: 15, reward: 50, currency: 'mp', description: 'Manage 3 workers', boss: false },
+                    8: { okrGoal: 20, reward: 75, currency: 'mp', description: 'Timed challenge', boss: false },
+                    9: { okrGoal: 30, reward: 100, currency: 'mp', description: 'Optimization puzzle', boss: false },
+                    10: { okrGoal: 50, reward: 150, currency: 'mp', description: 'BOSS: Scope Creep', boss: true, evolution: 2 },
+                    11: { okrGoal: 100, reward: 100, currency: 'ac', description: 'First conveyor', boss: false },
+                    12: { okrGoal: 500, reward: 200, currency: 'ac', description: 'Network topology', boss: false },
+                    13: { okrGoal: 10000, reward: 500, currency: 'ac', description: 'Exponential growth', boss: false },
+                    14: { okrGoal: 100000, reward: 1000, currency: 'ac', description: 'Singularity', boss: false },
+                    15: { okrGoal: 1000000, reward: 0, currency: 'ac', description: 'FINAL: Digital Transformation', boss: true, final: true }
+                };
+            }
+            
+            setupEventListeners() {
+                window.addEventListener('keydown', (e) => {
+                    this.keys[e.code] = true;
+                    if (e.code === 'Space' && this.state.phase === 1) {
+                        e.preventDefault();
+                    }
+                });
+                
+                window.addEventListener('keyup', (e) => {
+                    this.keys[e.code] = false;
+                });
+                
+                window.addEventListener('resize', () => {
+                    this.canvas.width = window.innerWidth;
+                    this.canvas.height = window.innerHeight;
+                    if (this.state.renderMode === '3D' && this.camera) {
+                        this.camera.aspect = window.innerWidth / window.innerHeight;
+                        this.camera.updateProjectionMatrix();
+                        this.renderer.setSize(window.innerWidth, window.innerHeight);
+                    }
+                });
+                
+                this.canvas.addEventListener('click', (e) => {
+                    if (this.state.phase === 3) {
+                        this.handleCanvasClick(e);
+                    }
+                });
+            }
+            
+            showMenu() {
+                document.getElementById('menu').style.display = 'block';
+            }
+            
+            startGame() {
+                document.getElementById('menu').style.display = 'none';
+                this.gameStarted = true;
+                this.setupPhase1();
+                this.loadLevel(1);
+                this.gameLoop();
+            }
+            
+            setupPhase1() {
+                // Initialize Three.js
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color(0x87ceeb);
+                this.scene.fog = new THREE.Fog(0x87ceeb, 50, 200);
+                
+                this.camera = new THREE.PerspectiveCamera(
+                    60,
+                    window.innerWidth / window.innerHeight,
+                    0.1,
+                    1000
+                );
+                this.camera.position.set(0, 5, 10);
+                
+                this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                
+                // Lighting
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                this.scene.add(ambientLight);
+                
+                const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                dirLight.position.set(10, 20, 10);
+                dirLight.castShadow = true;
+                dirLight.shadow.camera.left = -50;
+                dirLight.shadow.camera.right = 50;
+                dirLight.shadow.camera.top = 50;
+                dirLight.shadow.camera.bottom = -50;
+                dirLight.shadow.mapSize.width = 2048;
+                dirLight.shadow.mapSize.height = 2048;
+                this.scene.add(dirLight);
+                
+                // Create player
+                const playerGeometry = new THREE.BoxGeometry(1, 2, 1);
+                const playerMaterial = new THREE.MeshPhongMaterial({ color: 0x00ffff });
+                this.player = new THREE.Mesh(playerGeometry, playerMaterial);
+                this.player.position.set(0, 2, 0);
+                this.player.castShadow = true;
+                this.scene.add(this.player);
+            }
+            
+            disposeThreeJS() {
+                if (this.renderer) {
+                    this.renderer.dispose();
+                }
+                if (this.scene) {
+                    this.scene.traverse((obj) => {
+                        if (obj.geometry) obj.geometry.dispose();
+                        if (obj.material) {
+                            if (Array.isArray(obj.material)) {
+                                obj.material.forEach(m => m.dispose());
+                            } else {
+                                obj.material.dispose();
+                            }
+                        }
+                    });
+                }
+                this.scene = null;
+                this.camera = null;
+                this.renderer = null;
+                this.player = null;
+            }
+            
+            setupPhase2() {
+                this.disposeThreeJS();
+                this.ctx = this.canvas.getContext('2d');
+                this.state.renderMode = 'isometric';
+                
+                // Player position in 2D
+                this.player = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
+                
+                // Update UI
+                document.getElementById('controlsText').innerHTML = 
+                    'WASD - Move<br>Click - Hire/Manage';
+                document.getElementById('workers').style.display = 'block';
+            }
+            
+            setupPhase3() {
+                this.ctx = this.canvas.getContext('2d');
+                this.state.renderMode = 'abstract';
+                
+                // Hide workers, show buildings
+                document.getElementById('workers').style.display = 'none';
+                document.getElementById('buildings').style.display = 'block';
+                
+                // Update UI
+                document.getElementById('controlsText').innerHTML = 
+                    'Click - Place Automation<br>Watch - Numbers grow';
+                
+                this.automationNodes = [];
+                this.initAutomationBuildings();
+            }
+            
+            initAutomationBuildings() {
+                const buildingList = document.getElementById('buildingList');
+                buildingList.innerHTML = '';
+                
+                const buildings = [
+                    { name: 'Collector', cost: 50, rate: 1 },
+                    { name: 'Processor', cost: 150, rate: 5 },
+                    { name: 'Multiplier', cost: 500, rate: 25 },
+                    { name: 'Synthesizer', cost: 2000, rate: 100 }
+                ];
+                
+                buildings.forEach(b => {
+                    const btn = document.createElement('button');
+                    btn.className = 'building-btn';
+                    btn.id = 'building-' + b.name;
+                    btn.textContent = `${b.name} (${b.cost} AC) - ${b.rate}/s`;
+                    btn.onclick = () => this.selectBuilding(b, btn);
+                    buildingList.appendChild(btn);
+                });
+            }
+            
+            selectBuilding(building, btn) {
+                // Deselect previous
+                document.querySelectorAll('.building-btn').forEach(b => b.classList.remove('selected'));
+                
+                this.selectedBuilding = building;
+                if (btn) btn.classList.add('selected');
+            }
+            
+            handleCanvasClick(e) {
+                if (!this.selectedBuilding) return;
+                
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                if (this.state.currencies.ac >= this.selectedBuilding.cost) {
+                    this.state.currencies.ac -= this.selectedBuilding.cost;
+                    this.automationNodes.push({
+                        x, y,
+                        name: this.selectedBuilding.name,
+                        rate: this.selectedBuilding.rate,
+                        id: this.buildingIdCounter++
+                    });
+                    this.updateUI();
+                }
+            }
+            
+            loadLevel(levelNum) {
+                this.currentLevelData = this.levelConfigs[levelNum];
+                this.state.currentLevel = levelNum;
+                this.state.okrsCollected = 0;
+                
+                // Clear existing objects
+                this.okrs = [];
+                this.platforms = [];
+                this.jrodHQ = null;
+                
+                // Determine phase
+                if (levelNum <= 5) this.state.phase = 1;
+                else if (levelNum <= 10) this.state.phase = 2;
+                else this.state.phase = 3;
+                
+                // Generate level based on phase
+                if (this.state.phase === 1) {
+                    this.generatePhase1Level(levelNum);
+                } else if (this.state.phase === 2) {
+                    this.generatePhase2Level(levelNum);
+                } else {
+                    this.generatePhase3Level(levelNum);
+                }
+                
+                this.updateUI();
+            }
+            
+            generatePhase1Level(levelNum) {
+                // Clear scene
+                if (this.scene) {
+                    const objectsToRemove = [];
+                    this.scene.traverse((obj) => {
+                        if (obj.userData.isLevelObject) {
+                            objectsToRemove.push(obj);
+                        }
+                    });
+                    objectsToRemove.forEach(obj => this.scene.remove(obj));
+                }
+                
+                // Reset player
+                this.player.position.set(0, 2, 0);
+                this.playerVelocity = { x: 0, y: 0, z: 0 };
+                
+                const config = this.currentLevelData;
+                
+                // Create ground platform
+                this.createPlatform(0, -1, 0, 20, 2, 20, 0x228b22);
+                
+                // Generate platforms based on level
+                if (levelNum === 1) {
+                    // Tutorial - flat platforms
+                    this.createPlatform(10, 0, 0, 5, 1, 5, 0x8b4513);
+                    this.createPlatform(20, 0, 0, 8, 1, 8, 0x8b4513);
+                } else if (levelNum === 2) {
+                    // Gaps
+                    this.createPlatform(8, 0, 0, 4, 1, 4, 0x8b4513);
+                    this.createPlatform(16, 0, 0, 4, 1, 4, 0x8b4513);
+                    this.createPlatform(24, 0, 0, 4, 1, 4, 0x8b4513);
+                } else if (levelNum === 3) {
+                    // Obstacles
+                    for (let i = 0; i < 5; i++) {
+                        this.createPlatform(8 + i * 6, Math.random() * 2, 0, 3, 1, 3, 0x8b4513);
+                    }
+                } else if (levelNum === 4) {
+                    // Vertical
+                    for (let i = 0; i < 5; i++) {
+                        this.createPlatform(5, i * 3 + 1, 0, 4, 1, 4, 0x8b4513);
+                    }
+                } else if (levelNum === 5) {
+                    // Boss level
+                    for (let i = 0; i < 8; i++) {
+                        const angle = (i / 8) * Math.PI * 2;
+                        const x = Math.cos(angle) * 15;
+                        const z = Math.sin(angle) * 15;
+                        this.createPlatform(x, i * 2, z, 4, 1, 4, 0x8b4513);
+                    }
+                }
+                
+                // Place OKRs
+                for (let i = 0; i < config.okrGoal; i++) {
+                    let pos;
+                    if (levelNum === 1) {
+                        pos = { x: 10 + i * 5, y: 3, z: 0 };
+                    } else {
+                        const platform = this.platforms[Math.floor(Math.random() * this.platforms.length)];
+                        if (platform) {
+                            pos = {
+                                x: platform.position.x + (Math.random() - 0.5) * 2,
+                                y: platform.position.y + 3,
+                                z: platform.position.z + (Math.random() - 0.5) * 2
+                            };
+                        } else {
+                            pos = { x: i * 5, y: 3, z: 0 };
+                        }
+                    }
+                    this.createOKR(pos.x, pos.y, pos.z);
+                }
+                
+                // Create Jrod HQ
+                const hqGeometry = new THREE.BoxGeometry(5, 8, 5);
+                const hqMaterial = new THREE.MeshPhongMaterial({ color: 0xffd700 });
+                this.jrodHQ = new THREE.Mesh(hqGeometry, hqMaterial);
+                this.jrodHQ.position.set(30 + levelNum * 5, 4, 0);
+                this.jrodHQ.castShadow = true;
+                this.jrodHQ.userData.isLevelObject = true;
+                this.scene.add(this.jrodHQ);
+            }
+            
+            createPlatform(x, y, z, width, height, depth, color) {
+                const geometry = new THREE.BoxGeometry(width, height, depth);
+                const material = new THREE.MeshPhongMaterial({ color });
+                const platform = new THREE.Mesh(geometry, material);
+                platform.position.set(x, y, z);
+                platform.receiveShadow = true;
+                platform.castShadow = true;
+                platform.userData.isLevelObject = true;
+                platform.userData.isPlatform = true;
+                this.scene.add(platform);
+                this.platforms.push(platform);
+            }
+            
+            createOKR(x, y, z) {
+                const geometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+                const material = new THREE.MeshPhongMaterial({
+                    color: 0xffd700,
+                    emissive: 0xffaa00,
+                    emissiveIntensity: 0.5
+                });
+                const okr = new THREE.Mesh(geometry, material);
+                okr.position.set(x, y, z);
+                okr.userData.isLevelObject = true;
+                okr.userData.isOKR = true;
+                this.scene.add(okr);
+                this.okrs.push(okr);
+            }
+            
+            generatePhase2Level(levelNum) {
+                // Reset player in 2D
+                this.player = { x: 5, y: 0, z: 5, vx: 0, vy: 0, vz: 0 };
+                
+                // Generate isometric tiles
+                this.platforms = [];
+                const size = 20;
+                for (let x = 0; x < size; x++) {
+                    for (let z = 0; z < size; z++) {
+                        if (Math.random() > 0.3) {
+                            this.platforms.push({ x, y: 0, z, type: 'floor' });
+                        }
+                    }
+                }
+                
+                // Place OKRs randomly
+                this.okrs = [];
+                for (let i = 0; i < this.currentLevelData.okrGoal; i++) {
+                    const platform = this.platforms[Math.floor(Math.random() * this.platforms.length)];
+                    if (platform) {
+                        this.okrs.push({
+                            x: platform.x,
+                            y: platform.y + 1,
+                            z: platform.z,
+                            collected: false
+                        });
+                    }
+                }
+                
+                // HQ position
+                this.jrodHQ = { x: size - 2, y: 1, z: size - 2 };
+            }
+            
+            generatePhase3Level(levelNum) {
+                // Abstract level - just needs goal
+                this.okrs = [];
+                this.platforms = [];
+                this.jrodHQ = { active: true };
+            }
+            
+            updatePhase1(dt) {
+                if (!this.player) return;
+                
+                const speed = this.state.playerStats.speed;
+                const sprint = this.keys['ShiftLeft'] && this.state.playerStats.sprint > 0 ? 1.5 : 1;
+                
+                // Movement
+                if (this.keys['KeyW']) this.playerVelocity.z -= speed * sprint * dt;
+                if (this.keys['KeyS']) this.playerVelocity.z += speed * sprint * dt;
+                if (this.keys['KeyA']) this.playerVelocity.x -= speed * sprint * dt;
+                if (this.keys['KeyD']) this.playerVelocity.x += speed * sprint * dt;
+                
+                // Jump
+                if (this.keys['Space'] && this.isGrounded) {
+                    this.playerVelocity.y = this.state.playerStats.jump;
+                    this.isGrounded = false;
+                    this.hasDoubleJumped = false;
+                } else if (this.keys['Space'] && this.canDoubleJump && !this.hasDoubleJumped && !this.isGrounded) {
+                    this.playerVelocity.y = this.state.playerStats.jump * 0.8;
+                    this.hasDoubleJumped = true;
+                    this.keys['Space'] = false;
+                }
+                
+                // Gravity (reduced for better jump feel)
+                this.playerVelocity.y -= 20 * dt;
+                
+                // Apply velocity
+                this.player.position.x += this.playerVelocity.x * dt;
+                this.player.position.y += this.playerVelocity.y * dt;
+                this.player.position.z += this.playerVelocity.z * dt;
+                
+                // Friction
+                this.playerVelocity.x *= 0.9;
+                this.playerVelocity.z *= 0.9;
+                
+                // Collision detection
+                this.isGrounded = false;
+                this.platforms.forEach(platform => {
+                    const playerBox = new THREE.Box3().setFromObject(this.player);
+                    const platformBox = new THREE.Box3().setFromObject(platform);
+                    
+                    if (playerBox.intersectsBox(platformBox)) {
+                        // Simple ground collision
+                        if (this.playerVelocity.y < 0) {
+                            this.player.position.y = platform.position.y + platform.geometry.parameters.height / 2 + 1;
+                            this.playerVelocity.y = 0;
+                            this.isGrounded = true;
+                        }
+                    }
+                });
+                
+                // Death check - respawn if fallen too far
+                if (this.player.position.y < -20) {
+                    this.respawnPlayer();
+                }
+                
+                // OKR collection
+                this.okrs = this.okrs.filter(okr => {
+                    const dist = this.player.position.distanceTo(okr.position);
+                    if (dist < 2) {
+                        this.collectOKR();
+                        this.scene.remove(okr);
+                        return false;
+                    }
+                    return true;
+                });
+                
+                // Rotate OKRs
+                this.okrs.forEach(okr => {
+                    okr.rotation.y += dt * 2;
+                });
+                
+                // HQ check
+                if (this.jrodHQ) {
+                    const distToHQ = this.player.position.distanceTo(this.jrodHQ.position);
+                    if (distToHQ < 5 && this.state.okrsCollected >= this.currentLevelData.okrGoal) {
+                        this.completeLevel();
+                    }
+                }
+                
+                // Camera follow
+                this.camera.position.x = this.player.position.x + this.cameraOffset.x;
+                this.camera.position.y = this.player.position.y + this.cameraOffset.y;
+                this.camera.position.z = this.player.position.z + this.cameraOffset.z;
+                this.camera.lookAt(this.player.position);
+                
+                // Render
+                this.renderer.render(this.scene, this.camera);
+            }
+            
+            updatePhase2(dt) {
+                const speed = 5;
+                
+                // Player movement
+                if (this.keys['KeyW']) this.player.z -= speed * dt;
+                if (this.keys['KeyS']) this.player.z += speed * dt;
+                if (this.keys['KeyA']) this.player.x -= speed * dt;
+                if (this.keys['KeyD']) this.player.x += speed * dt;
+                
+                // Keep in bounds
+                this.player.x = Math.max(0, Math.min(20, this.player.x));
+                this.player.z = Math.max(0, Math.min(20, this.player.z));
+                
+                // Update AI workers
+                this.state.aiWorkers.forEach(worker => {
+                    if (!worker.targetOKR) {
+                        // Find nearest uncollected OKR
+                        const available = this.okrs.filter(o => !o.collected && !o.claimed);
+                        if (available.length > 0) {
+                            worker.targetOKR = available[0];
+                            worker.targetOKR.claimed = true;
+                        }
+                    } else {
+                        // Move towards OKR
+                        const dx = worker.targetOKR.x - worker.x;
+                        const dz = worker.targetOKR.z - worker.z;
+                        const dist = Math.sqrt(dx * dx + dz * dz);
+                        
+                        if (dist < 0.5) {
+                            // Collect OKR
+                            worker.targetOKR.collected = true;
+                            this.collectOKR();
+                            worker.targetOKR = null;
+                        } else {
+                            // Move
+                            const workerSpeed = 3 * (this.state.phase === 3 ? 0.25 : 1);
+                            worker.x += (dx / dist) * workerSpeed * dt;
+                            worker.z += (dz / dist) * workerSpeed * dt;
+                        }
+                    }
+                });
+                
+                // Player can also collect
+                this.okrs.forEach(okr => {
+                    if (!okr.collected) {
+                        const dx = this.player.x - okr.x;
+                        const dz = this.player.z - okr.z;
+                        const dist = Math.sqrt(dx * dx + dz * dz);
+                        if (dist < 1) {
+                            okr.collected = true;
+                            this.collectOKR();
+                        }
+                    }
+                });
+                
+                // Check completion
+                if (this.state.okrsCollected >= this.currentLevelData.okrGoal) {
+                    const dx = this.player.x - this.jrodHQ.x;
+                    const dz = this.player.z - this.jrodHQ.z;
+                    const dist = Math.sqrt(dx * dx + dz * dz);
+                    if (dist < 2) {
+                        this.completeLevel();
+                    }
+                }
+                
+                this.renderPhase2();
+            }
+            
+            renderPhase2() {
+                const ctx = this.ctx;
+                const canvas = this.canvas;
+                
+                // Clear
+                ctx.fillStyle = '#1a1a2e';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Center camera on player
+                const offsetX = canvas.width / 2;
+                const offsetY = canvas.height / 2;
+                
+                // Draw platforms
+                this.platforms.forEach(p => {
+                    this.drawIsoTile(p.x, p.y, p.z, '#4a4a4a', offsetX, offsetY);
+                });
+                
+                // Draw OKRs
+                this.okrs.forEach(okr => {
+                    if (!okr.collected) {
+                        this.drawIsoTile(okr.x, okr.y, okr.z, '#ffd700', offsetX, offsetY);
+                    }
+                });
+                
+                // Draw HQ
+                this.drawIsoTile(this.jrodHQ.x, this.jrodHQ.y, this.jrodHQ.z, '#00ffff', offsetX, offsetY);
+                this.drawIsoTile(this.jrodHQ.x, this.jrodHQ.y + 1, this.jrodHQ.z, '#00ffff', offsetX, offsetY);
+                
+                // Draw player
+                this.drawIsoTile(this.player.x, this.player.y + 1, this.player.z, '#00ff00', offsetX, offsetY);
+                
+                // Draw AI workers
+                this.state.aiWorkers.forEach(worker => {
+                    this.drawIsoTile(worker.x, worker.y + 1, worker.z, '#ff00ff', offsetX, offsetY);
+                });
+            }
+            
+            drawIsoTile(x, y, z, color, offsetX, offsetY) {
+                const ctx = this.ctx;
+                const pos = this.toIso(x - this.player.x, y, z - this.player.z);
+                
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.moveTo(offsetX + pos.x, offsetY + pos.y);
+                ctx.lineTo(offsetX + pos.x + 32, offsetY + pos.y + 16);
+                ctx.lineTo(offsetX + pos.x, offsetY + pos.y + 32);
+                ctx.lineTo(offsetX + pos.x - 32, offsetY + pos.y + 16);
+                ctx.closePath();
+                ctx.fill();
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+            
+            toIso(x, y, z) {
+                return {
+                    x: (x - z) * 32,
+                    y: (x + z) * 16 - y * 24
+                };
+            }
+            
+            updatePhase3(dt) {
+                // Automation - mostly passive
+                let productionRate = 0;
+                
+                this.automationNodes.forEach(node => {
+                    productionRate += node.rate;
+                });
+                
+                // AI workers contribute at 25% speed
+                const workerContribution = this.state.aiWorkers.length * 0.5;
+                productionRate += workerContribution;
+                
+                // Auto-collect OKRs
+                const okrsThisFrame = productionRate * dt;
+                this.state.okrsCollected += okrsThisFrame;
+                this.state.totalOKRs += okrsThisFrame;
+                
+                // Check completion
+                if (this.state.okrsCollected >= this.currentLevelData.okrGoal) {
+                    this.completeLevel();
+                }
+                
+                this.renderPhase3(productionRate);
+            }
+            
+            renderPhase3(rate) {
+                const ctx = this.ctx;
+                const canvas = this.canvas;
+                
+                // Dark background
+                ctx.fillStyle = '#0a0a0a';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Grid effect
+                ctx.strokeStyle = 'rgba(0, 200, 255, 0.1)';
+                ctx.lineWidth = 1;
+                for (let i = 0; i < canvas.width; i += 50) {
+                    ctx.beginPath();
+                    ctx.moveTo(i, 0);
+                    ctx.lineTo(i, canvas.height);
+                    ctx.stroke();
+                }
+                for (let i = 0; i < canvas.height; i += 50) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, i);
+                    ctx.lineTo(canvas.width, i);
+                    ctx.stroke();
+                }
+                
+                // Draw automation nodes
+                this.automationNodes.forEach((node, i) => {
+                    this.drawNode(node.x, node.y, node.rate, node.name);
+                    
+                    // Connect to next node
+                    if (i < this.automationNodes.length - 1) {
+                        const next = this.automationNodes[i + 1];
+                        this.drawConnection(node.x, node.y, next.x, next.y);
+                    }
+                });
+                
+                // Draw central display
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                
+                // Production rate display
+                ctx.fillStyle = '#0ff';
+                ctx.font = 'bold 48px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(`${Math.floor(rate)}/s`, centerX, centerY - 100);
+                
+                // Progress circle
+                const progress = this.state.okrsCollected / this.currentLevelData.okrGoal;
+                const radius = 100;
+                
+                ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+                ctx.lineWidth = 10;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                ctx.stroke();
+                
+                ctx.strokeStyle = '#0ff';
+                ctx.lineWidth = 10;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+                ctx.stroke();
+                
+                // OKR count
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 24px monospace';
+                ctx.fillText(
+                    `${this.formatNumber(this.state.okrsCollected)} / ${this.formatNumber(this.currentLevelData.okrGoal)}`,
+                    centerX,
+                    centerY + 10
+                );
+            }
+            
+            drawNode(x, y, rate, name) {
+                const ctx = this.ctx;
+                
+                // Glow
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, 40);
+                gradient.addColorStop(0, 'rgba(255, 215, 0, 0.8)');
+                gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(x, y, 40, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Node circle
+                ctx.fillStyle = '#ffd700';
+                ctx.beginPath();
+                ctx.arc(x, y, 25, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Rate text
+                ctx.fillStyle = '#000';
+                ctx.font = 'bold 14px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(`${rate}/s`, x, y);
+                
+                // Name
+                ctx.fillStyle = '#fff';
+                ctx.font = '12px monospace';
+                ctx.fillText(name, x, y + 45);
+            }
+            
+            drawConnection(x1, y1, x2, y2) {
+                const ctx = this.ctx;
+                
+                ctx.strokeStyle = 'rgba(0, 200, 255, 0.6)';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+                
+                // Animated particle
+                const t = (performance.now() / 1000) % 1;
+                const px = x1 + (x2 - x1) * t;
+                const py = y1 + (y2 - y1) * t;
+                
+                ctx.fillStyle = '#0ff';
+                ctx.beginPath();
+                ctx.arc(px, py, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            formatNumber(num) {
+                if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+                if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+                return Math.floor(num).toString();
+            }
+            
+            collectOKR() {
+                this.state.okrsCollected++;
+                this.state.totalOKRs++;
+                this.updateUI();
+            }
+            
+            respawnPlayer() {
+                // Reset player position to start
+                this.player.position.set(0, 2, 0);
+                this.playerVelocity = { x: 0, y: 0, z: 0 };
+                this.isGrounded = false;
+                console.log('Player respawned after falling');
+            }
+            
+            completeLevel() {
+                const config = this.currentLevelData;
+                
+                // Award currency
+                const currencyType = config.currency;
+                this.state.currencies[currencyType] += config.reward;
+                
+                // Mark as completed
+                if (!this.state.completedLevels.includes(this.state.currentLevel)) {
+                    this.state.completedLevels.push(this.state.currentLevel);
+                }
+                
+                // Unlock abilities
+                if (config.unlock === 'sprint') {
+                    this.state.playerStats.sprint = 1;
+                }
+                if (config.unlock === 'doubleJump') {
+                    this.canDoubleJump = true;
+                }
+                
+                // Check for evolution
+                if (config.evolution === 1) {
+                    this.triggerEvolution1();
+                } else if (config.evolution === 2) {
+                    this.triggerEvolution2();
+                } else if (config.final) {
+                    this.showVictoryScreen();
+                } else {
+                    // Next level
+                    setTimeout(() => {
+                        this.loadLevel(this.state.currentLevel + 1);
+                    }, 1000);
+                }
+                
+                this.saveGame();
+            }
+            
+            triggerEvolution1() {
+                this.paused = true;
+                
+                const cutscene = document.getElementById('cutscene');
+                const text = document.getElementById('cutsceneText');
+                
+                cutscene.style.display = 'flex';
+                cutscene.className = '';
+                cutscene.style.background = '#fff';
+                text.style.color = '#000';
+                
+                const messages = [
+                    'EVOLUTION INITIATED',
+                    'Manual processes... obsolete',
+                    'Delegating to AI systems',
+                    'PHASE 2: MANAGEMENT MODE'
+                ];
+                
+                let i = 0;
+                const showMessage = () => {
+                    if (i < messages.length) {
+                        text.textContent = messages[i];
+                        i++;
+                        setTimeout(showMessage, 2000);
+                    } else {
+                        // Apply evolution changes
+                        this.state.currencies.mp = 0;
+                        this.state.currencies.dp = 0;
+                        
+                        // Keep 50% of stats
+                        Object.keys(this.state.playerStats).forEach(key => {
+                            if (typeof this.state.playerStats[key] === 'number') {
+                                this.state.playerStats[key] *= 0.5;
+                            }
+                        });
+                        
+                        cutscene.style.display = 'none';
+                        this.setupPhase2();
+                        this.loadLevel(6);
+                        this.paused = false;
+                    }
+                };
+                
+                showMessage();
+            }
+            
+            triggerEvolution2() {
+                this.paused = true;
+                
+                const cutscene = document.getElementById('cutscene');
+                const text = document.getElementById('cutsceneText');
+                
+                cutscene.style.display = 'flex';
+                cutscene.className = 'glitch';
+                cutscene.style.background = '#000';
+                text.style.color = '#0ff';
+                
+                const messages = [
+                    '⚠ SYSTEM OVERLOAD ⚠',
+                    'Manual control... unnecessary',
+                    'Automation protocols engaged',
+                    'PHASE 3: SINGULARITY MODE'
+                ];
+                
+                let i = 0;
+                const showMessage = () => {
+                    if (i < messages.length) {
+                        text.textContent = messages[i];
+                        i++;
+                        setTimeout(showMessage, 2000);
+                    } else {
+                        // Apply evolution changes
+                        this.state.currencies.ac = 0;
+                        this.state.currencies.mp = 0;
+                        
+                        cutscene.style.display = 'none';
+                        this.setupPhase3();
+                        this.loadLevel(11);
+                        this.paused = false;
+                    }
+                };
+                
+                showMessage();
+            }
+            
+            showVictoryScreen() {
+                this.paused = true;
+                
+                const menu = document.getElementById('menu');
+                menu.innerHTML = `
+                    <h1 class="glow">DIGITAL TRANSFORMATION COMPLETE!</h1>
+                    <p style="font-size: 24px; margin: 20px 0;">Total OKRs: ${this.formatNumber(this.state.totalOKRs)}</p>
+                    <p style="margin: 10px 0;">Choose your ending:</p>
+                    <button onclick="game.ending('retire')">🌴 RETIRE - Watch forever</button>
+                    <button onclick="game.ending('merge')">🤖 MERGE - Become the system</button>
+                    <button onclick="game.ending('restart')">🔄 RESTART - New Game+ (2x bonuses)</button>
+                `;
+                menu.style.display = 'block';
+            }
+            
+            ending(type) {
+                const menu = document.getElementById('menu');
+                
+                if (type === 'retire') {
+                    menu.innerHTML = '<h1>You retire to a beach somewhere...</h1><p>The automation runs eternally.</p>';
+                } else if (type === 'merge') {
+                    menu.innerHTML = '<h1>You become one with the system.</h1><p>Digital consciousness achieved.</p>';
+                } else if (type === 'restart') {
+                    localStorage.removeItem('teamDominosGame');
+                    location.reload();
+                }
+            }
+            
+            hireWorker() {
+                if (this.state.currencies.mp >= this.hireCost) {
+                    this.state.currencies.mp -= this.hireCost;
+                    
+                    this.state.aiWorkers.push({
+                        id: this.workerIdCounter++,
+                        x: this.player.x,
+                        y: 0,
+                        z: this.player.z,
+                        targetOKR: null
+                    });
+                    
+                    this.hireCost = Math.floor(this.hireCost * 1.5);
+                    document.getElementById('hireCost').textContent = this.hireCost;
+                    
+                    this.updateWorkerUI();
+                    this.updateUI();
+                }
+            }
+            
+            updateWorkerUI() {
+                const workerList = document.getElementById('workerList');
+                workerList.innerHTML = '';
+                
+                this.state.aiWorkers.forEach(worker => {
+                    const div = document.createElement('div');
+                    div.className = 'worker-item';
+                    div.textContent = `Worker #${worker.id} ${worker.targetOKR ? '🔨' : '💤'}`;
+                    workerList.appendChild(div);
+                });
+            }
+            
+            skipToNextLevel() {
+                // Cheat for testing - instantly complete level
+                this.state.okrsCollected = this.currentLevelData.okrGoal;
+                this.completeLevel();
+            }
+            
+            updateUI() {
+                document.getElementById('currentLevel').textContent = this.state.currentLevel;
+                document.getElementById('currentPhase').textContent = this.state.phase;
+                document.getElementById('okrCount').textContent = Math.floor(this.state.okrsCollected);
+                document.getElementById('okrGoal').textContent = this.formatNumber(this.currentLevelData.okrGoal);
+                document.getElementById('totalOKRs').textContent = this.formatNumber(this.state.totalOKRs);
+                
+                const progress = Math.min(100, (this.state.okrsCollected / this.currentLevelData.okrGoal) * 100);
+                document.getElementById('okrProgress').style.width = progress + '%';
+                document.getElementById('okrPercent').textContent = Math.floor(progress);
+                
+                // Currency display
+                let currencyText = '';
+                if (this.state.phase === 1) {
+                    currencyText = `DP: ${Math.floor(this.state.currencies.dp)}`;
+                } else if (this.state.phase === 2) {
+                    currencyText = `MP: ${Math.floor(this.state.currencies.mp)}`;
+                } else {
+                    currencyText = `AC: ${Math.floor(this.state.currencies.ac)}`;
+                }
+                document.getElementById('currencyDisplay').innerHTML = currencyText;
+                
+                // Level info
+                document.getElementById('objective').textContent = this.currentLevelData.description;
+                
+                const phaseDesc = [
+                    'Phase 1: Manual Collection',
+                    'Phase 2: AI Management',
+                    'Phase 3: Full Automation'
+                ][this.state.phase - 1];
+                document.getElementById('phaseDesc').innerHTML = `<strong>${phaseDesc}</strong>`;
+            }
+            
+            saveGame() {
+                localStorage.setItem('teamDominosGame', JSON.stringify(this.state));
+                console.log('Game saved!');
+            }
+            
+            loadGame() {
+                const saved = localStorage.getItem('teamDominosGame');
+                if (saved) {
+                    this.state = JSON.parse(saved);
+                    document.getElementById('menu').style.display = 'none';
+                    this.gameStarted = true;
+                    
+                    if (this.state.phase === 1) {
+                        this.setupPhase1();
+                    } else if (this.state.phase === 2) {
+                        this.setupPhase2();
+                    } else {
+                        this.setupPhase3();
+                    }
+                    
+                    this.loadLevel(this.state.currentLevel);
+                    this.gameLoop();
+                } else {
+                    alert('No saved game found!');
+                }
+            }
+            
+            gameLoop() {
+                if (!this.gameStarted) return;
+                
+                const now = performance.now();
+                this.deltaTime = Math.min((now - this.lastTime) / 1000, 0.1);
+                this.lastTime = now;
+                this.gameTime += this.deltaTime;
+                
+                if (!this.paused) {
+                    if (this.state.phase === 1) {
+                        this.updatePhase1(this.deltaTime);
+                    } else if (this.state.phase === 2) {
+                        this.updatePhase2(this.deltaTime);
+                    } else if (this.state.phase === 3) {
+                        this.updatePhase3(this.deltaTime);
+                    }
+                }
+                
+                requestAnimationFrame(() => this.gameLoop());
+            }
+        }
+        
+        // Initialize game
+        window.game = new TeamDominosGame();
+    </script>
+</body>
+</html>
