@@ -347,6 +347,78 @@
         .tutorial-hint.visible {
             opacity: 1;
         }
+
+        #achievementPopup {
+            position: fixed;
+            top: -80px;
+            right: 20px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border: 2px solid #ffd700;
+            border-radius: 12px;
+            padding: 12px 20px;
+            z-index: 200;
+            transition: top 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.4), inset 0 0 10px rgba(255, 215, 0, 0.1);
+            min-width: 250px;
+        }
+        #achievementPopup.show {
+            top: 20px;
+        }
+        #achievementPopup .ach-icon {
+            font-size: 28px;
+            display: inline-block;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        #achievementPopup .ach-title {
+            color: #ffd700;
+            font: bold 14px monospace;
+            display: block;
+        }
+        #achievementPopup .ach-desc {
+            color: #aaa;
+            font: 11px monospace;
+        }
+        #achievementPopup .ach-label {
+            color: #888;
+            font: 9px monospace;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        #achievementsList {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 150;
+            display: none;
+            overflow-y: auto;
+            padding: 40px;
+        }
+        #achievementsList .ach-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 12px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        #achievementsList .ach-card {
+            background: #1a1a2e;
+            border: 2px solid #333;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+        #achievementsList .ach-card.unlocked {
+            border-color: #ffd700;
+            box-shadow: 0 0 10px rgba(255,215,0,0.2);
+        }
+        #achievementsList .ach-card .icon { font-size: 32px; }
+        #achievementsList .ach-card .name { color: #fff; font: bold 12px monospace; margin: 6px 0 2px; }
+        #achievementsList .ach-card .desc { color: #888; font: 10px monospace; }
+        #achievementsList .ach-card.locked .icon { filter: grayscale(1) brightness(0.4); }
+        #achievementsList .ach-card.locked .name { color: #555; }
     </style>
 </head>
 <body>
@@ -391,6 +463,7 @@
             <button id="saveBtn" onclick="game.saveGame()">Save</button>
             <button id="nextBtn" onclick="game.skipToNextLevel()" style="font-size: 10px;">Skip Level</button>
             <button id="muteBtn" onclick="game.toggleMusic()" style="font-size: 10px;">🔊 Music</button>
+            <button onclick="game.showAchievements()" style="font-size: 10px;">🏆 Achievements</button>
         </div>
     </div>
     
@@ -419,6 +492,23 @@
     
     <div id="cutscene">
         <div class="cutscene-text" id="cutsceneText"></div>
+    </div>
+    
+    <div id="achievementPopup">
+        <div class="ach-label">🏆 Achievement Unlocked</div>
+        <span class="ach-icon" id="achPopIcon"></span>
+        <span>
+            <span class="ach-title" id="achPopTitle"></span>
+            <span class="ach-desc" id="achPopDesc"></span>
+        </span>
+    </div>
+    
+    <div id="achievementsList">
+        <h2 style="color:#ffd700;text-align:center;font-family:monospace;margin-bottom:20px;">🏆 ACHIEVEMENTS</h2>
+        <div class="ach-grid" id="achGrid"></div>
+        <div style="text-align:center;margin-top:20px;">
+            <button onclick="document.getElementById('achievementsList').style.display='none'" style="font-size:14px;padding:8px 24px;cursor:pointer;">CLOSE</button>
+        </div>
     </div>
 
     <script type="module">
@@ -519,6 +609,11 @@
                 // Tutorial hint system
                 this.tutorialShown = {};
                 this.tutorialNoMoveTimer = 0;
+                
+                // Achievement system
+                this.achievements = {};
+                this.initAchievements();
+                this.achQueue = [];
 
                 this.setupEventListeners();
                 this.showMenu();
@@ -814,6 +909,119 @@
                 }
             }
 
+            initAchievements() {
+                this.achDefs = {
+                    'first-okr':       { icon: '🪙', name: 'First Pickup', desc: 'Collect your first OKR coin' },
+                    'combo-3':         { icon: '🔥', name: 'Hot Streak', desc: 'Get a x3 combo' },
+                    'combo-8':         { icon: '💥', name: 'Unstoppable', desc: 'Get a x8 combo' },
+                    'level-1':         { icon: '🎓', name: 'Graduate', desc: 'Complete Level 1' },
+                    'level-5':         { icon: '📋', name: 'Bureaucrat Slayer', desc: 'Defeat The Bureaucrat (L5)' },
+                    'level-10':        { icon: '🎌', name: 'Scope Managed', desc: 'Beat Scope Creep (L10)' },
+                    'level-15':        { icon: '👑', name: 'Digital Transformer', desc: 'Complete the final level' },
+                    'phase-2':         { icon: '🎬', name: 'Evolution I', desc: 'Reach Phase 2' },
+                    'phase-3':         { icon: '🤖', name: 'Evolution II', desc: 'Reach Phase 3' },
+                    'speed-demon':     { icon: '⚡', name: 'Speed Demon', desc: 'Complete any level in under 15 seconds' },
+                    'collector-10':    { icon: '💰', name: 'Coin Hoarder', desc: 'Collect 10 OKRs in a single level' },
+                    'collector-50':    { icon: '🏦', name: 'OKR Mogul', desc: 'Collect 50 total OKRs' },
+                    'no-death':        { icon: '🛡️', name: 'Untouchable', desc: 'Complete a level without dying' },
+                    'hire-first':      { icon: '🤝', name: 'Team Builder', desc: 'Hire your first AI worker' },
+                    'hire-5':          { icon: '🏢', name: 'Department Head', desc: 'Have 5 AI workers at once' },
+                    'build-first':     { icon: '🏗️', name: 'Architect', desc: 'Place your first automation building' },
+                    'multiplier':      { icon: '✖️', name: 'Force Multiplier', desc: 'Place a Multiplier building' },
+                    'sprint-unlock':   { icon: '🏃', name: 'Gotta Go Fast', desc: 'Unlock sprint ability' },
+                    'double-jump':     { icon: '🦘', name: 'Sky Walker', desc: 'Unlock double jump' },
+                    'all-stars':       { icon: '⭐', name: 'Perfectionist', desc: 'Get 3 stars on any level' },
+                };
+            }
+            
+            unlockAchievement(id) {
+                if (this.achievements[id]) return;
+                if (!this.achDefs[id]) return;
+                this.achievements[id] = { unlocked: true, time: Date.now() };
+                
+                const def = this.achDefs[id];
+                
+                // Show popup
+                const popup = document.getElementById('achievementPopup');
+                document.getElementById('achPopIcon').textContent = def.icon;
+                document.getElementById('achPopTitle').textContent = def.name;
+                document.getElementById('achPopDesc').textContent = def.desc;
+                popup.classList.add('show');
+                
+                // Play sound
+                if (this.playSound) this.playSound('complete');
+                
+                // Auto-hide after 3.5s
+                clearTimeout(this._achPopTimer);
+                this._achPopTimer = setTimeout(() => popup.classList.remove('show'), 3500);
+                
+                this.saveGame();
+            }
+            
+            checkAchievements() {
+                const s = this.state;
+                
+                // Collection
+                if (s.totalOKRs >= 1) this.unlockAchievement('first-okr');
+                if (s.totalOKRs >= 50) this.unlockAchievement('collector-50');
+                if (s.okrsCollected >= 10) this.unlockAchievement('collector-10');
+                
+                // Combos
+                if (this.comboCount >= 3) this.unlockAchievement('combo-3');
+                if (this.comboCount >= 8) this.unlockAchievement('combo-8');
+                
+                // Levels
+                if (s.completedLevels.includes(1)) this.unlockAchievement('level-1');
+                if (s.completedLevels.includes(5)) this.unlockAchievement('level-5');
+                if (s.completedLevels.includes(10)) this.unlockAchievement('level-10');
+                if (s.completedLevels.includes(15)) this.unlockAchievement('level-15');
+                
+                // Phases
+                if (s.phase >= 2) this.unlockAchievement('phase-2');
+                if (s.phase >= 3) this.unlockAchievement('phase-3');
+                
+                // Workers
+                if (s.aiWorkers.length >= 1) this.unlockAchievement('hire-first');
+                if (s.aiWorkers.length >= 5) this.unlockAchievement('hire-5');
+                
+                // Abilities
+                if (s.playerStats && s.playerStats.sprint > 0) this.unlockAchievement('sprint-unlock');
+                if (this.canDoubleJump) this.unlockAchievement('double-jump');
+                
+                // Speed (checked in completeLevel)
+                // Building (checked in handleCanvasClick)
+                // No death (checked in completeLevel)
+            }
+            
+            showAchievements() {
+                const panel = document.getElementById('achievementsList');
+                const grid = document.getElementById('achGrid');
+                grid.innerHTML = '';
+                
+                const total = Object.keys(this.achDefs).length;
+                const unlocked = Object.keys(this.achievements).length;
+                
+                // Header count
+                const header = document.createElement('div');
+                header.style.cssText = 'grid-column:1/-1;text-align:center;color:#aaa;font:13px monospace;margin-bottom:10px;';
+                header.textContent = `${unlocked} / ${total} Unlocked`;
+                grid.appendChild(header);
+                
+                for (const [id, def] of Object.entries(this.achDefs)) {
+                    const card = document.createElement('div');
+                    const isUnlocked = !!this.achievements[id];
+                    card.className = 'ach-card ' + (isUnlocked ? 'unlocked' : 'locked');
+                    card.innerHTML = `
+                        <div class="icon">${def.icon}</div>
+                        <div class="name">${isUnlocked ? def.name : '???'}</div>
+                        <div class="desc">${isUnlocked ? def.desc : 'Keep playing to unlock'}</div>
+                    `;
+                    grid.appendChild(card);
+                }
+                
+                panel.style.display = 'block';
+            }
+            
             setupEventListeners() {
                 window.addEventListener('keydown', (e) => {
                     this.keys[e.code] = true;
@@ -1153,6 +1361,8 @@
                         id: this.buildingIdCounter++
                     });
                     this.updateUI();
+                    this.unlockAchievement('build-first');
+                    if (this.selectedBuilding.name === 'Multiplier') this.unlockAchievement('multiplier');
                 }
             }
             
@@ -3530,6 +3740,12 @@
                     this.state.completedLevels.push(this.state.currentLevel);
                 }
                 
+                // Achievement checks on complete
+                const levelTime = (performance.now() - (this.levelStartTime || 0)) / 1000;
+                if (levelTime < 15) this.unlockAchievement('speed-demon');
+                if (levelTime < 30) this.unlockAchievement('all-stars');
+                this.checkAchievements();
+                
                 // Unlock abilities
                 if (config.unlock === 'sprint') {
                     this.state.playerStats.sprint = 1;
@@ -3833,7 +4049,7 @@
             }
             
             saveGame() {
-                const saveData = Object.assign({}, this.state, { tutorialShown: this.tutorialShown });
+                const saveData = Object.assign({}, this.state, { tutorialShown: this.tutorialShown, achievements: this.achievements });
                 localStorage.setItem('teamDominosGame', JSON.stringify(saveData));
                 console.log('Game saved!');
             }
@@ -3850,6 +4066,10 @@
                     if (data.tutorialShown) {
                         this.tutorialShown = data.tutorialShown;
                         delete data.tutorialShown;
+                    }
+                    if (data.achievements) {
+                        this.achievements = data.achievements;
+                        delete data.achievements;
                     }
                     this.state = data;
                     document.getElementById('menu').style.display = 'none';
@@ -3888,6 +4108,10 @@
                     this.updateFloatingTexts(this.deltaTime);
                     this.updateParticles(this.deltaTime);
                     if (this.shakeDuration > 0) this.shakeDuration -= this.deltaTime;
+                    
+                    // Check achievements periodically
+                    this._achCheckTimer = (this._achCheckTimer || 0) + this.deltaTime;
+                    if (this._achCheckTimer > 1) { this._achCheckTimer = 0; this.checkAchievements(); }
                     
                     if (this.state.phase === 1) {
                         this.updatePhase1(this.deltaTime);
