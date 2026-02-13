@@ -1464,12 +1464,16 @@
             updatePhase2(dt) {
                 const speed = 8;
                 
-                // Player car movement
+                // Isometric movement: remap WASD to iso directions
+                // W = up-left on screen (-x, -z in world)
+                // S = down-right (+x, +z)
+                // A = down-left (-x, +z) 
+                // D = up-right (+x, -z)
                 let moveX = 0, moveZ = 0;
-                if (this.keys['KeyW']) moveZ -= 1;
-                if (this.keys['KeyS']) moveZ += 1;
-                if (this.keys['KeyA']) moveX -= 1;
-                if (this.keys['KeyD']) moveX += 1;
+                if (this.keys['KeyW']) { moveX -= 1; moveZ -= 1; }
+                if (this.keys['KeyS']) { moveX += 1; moveZ += 1; }
+                if (this.keys['KeyA']) { moveX -= 1; moveZ += 1; }
+                if (this.keys['KeyD']) { moveX += 1; moveZ -= 1; }
                 
                 if (moveX !== 0 || moveZ !== 0) {
                     const len = Math.sqrt(moveX * moveX + moveZ * moveZ);
@@ -1570,13 +1574,17 @@
                 const offsetX = canvas.width / 2;
                 const offsetY = canvas.height / 2;
                 
-                // Draw office floor with cubicles (fixed world grid, camera pans)
+                // Camera follows player smoothly
+                if (!this._camX) { this._camX = this.player.x; this._camZ = this.player.z; }
+                this._camX += (this.player.x - this._camX) * 0.08;
+                this._camZ += (this.player.z - this._camZ) * 0.08;
+                
+                // Draw office floor with cubicles
                 const tileSize = 32;
                 const gridRange = 15;
                 
-                // Camera offset: everything shifts opposite to player
-                const camX = this.player.x;
-                const camZ = this.player.z;
+                const camX = this._camX;
+                const camZ = this._camZ;
                 
                 for (let wx = Math.floor(camX) - gridRange; wx <= Math.floor(camX) + gridRange; wx++) {
                     for (let wz = Math.floor(camZ) - gridRange; wz <= Math.floor(camZ) + gridRange; wz++) {
@@ -1664,7 +1672,7 @@
                 // Draw OKR coins
                 this.okrs.forEach(okr => {
                     if (!okr.collected) {
-                        const pos = this.toIso(okr.x - this.player.x, okr.y, okr.z - this.player.z);
+                        const pos = this.toIso(okr.x - camX, okr.y, okr.z - camZ);
                         const cx = offsetX + pos.x;
                         const cy = offsetY + pos.y - 10;
                         const bounce = Math.sin(this.gameTime * 3 + okr.x) * 4;
@@ -1708,7 +1716,7 @@
                 
                 // Draw car lift goal
                 if (this.jrodHQ) {
-                    const hqPos = this.toIso(this.jrodHQ.x - this.player.x, 0, this.jrodHQ.z - this.player.z);
+                    const hqPos = this.toIso(this.jrodHQ.x - camX, 0, this.jrodHQ.z - camZ);
                     const hx = offsetX + hqPos.x;
                     const hy = offsetY + hqPos.y;
                     
@@ -1744,7 +1752,7 @@
                 
                 // Draw AI workers (small robots)
                 this.state.aiWorkers.forEach(worker => {
-                    const wPos = this.toIso(worker.x - this.player.x, 0, worker.z - this.player.z);
+                    const wPos = this.toIso(worker.x - camX, 0, worker.z - camZ);
                     const wx = offsetX + wPos.x;
                     const wy = offsetY + wPos.y - 15;
                     
@@ -1779,12 +1787,14 @@
                     ctx.fill();
                 });
                 
-                // Draw player car (top-down isometric)
-                // Convert world angle to isometric screen angle
+                // Draw player car at its world position
+                const carPos = this.toIso(this.player.x - camX, 0, this.player.z - camZ);
+                const carScreenX = offsetX + carPos.x;
+                const carScreenY = offsetY + carPos.y - 15;
                 const worldAngle = this.player.angle || 0;
                 const isoAngle = worldAngle + Math.PI / 4;
                 ctx.save();
-                ctx.translate(offsetX, offsetY - 15);
+                ctx.translate(carScreenX, carScreenY);
                 ctx.rotate(isoAngle);
                 
                 // Car shadow
