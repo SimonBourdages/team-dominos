@@ -288,6 +288,7 @@
         <div style="margin-top: 10px;">
             <button id="saveBtn" onclick="game.saveGame()">Save</button>
             <button id="nextBtn" onclick="game.skipToNextLevel()" style="font-size: 10px;">Skip Level</button>
+            <button id="muteBtn" onclick="game.toggleMusic()" style="font-size: 10px;">🔊 Music</button>
         </div>
     </div>
     
@@ -392,6 +393,12 @@
                 this.currentLevelSpectators = [];
                 this.initSpectatorConfigs();
                 
+                // Music system
+                this.audioCtx = null;
+                this.musicPlaying = false;
+                this.musicNodes = [];
+                this.initMusicConfigs();
+                
                 this.setupEventListeners();
                 this.showMenu();
             }
@@ -434,6 +441,187 @@
                     14: [{ name: 'ALL 20', color: '#00ffff', quote: 'Almost there!' }],
                     15: [{ name: 'Jrod', color: '#ffd700', quote: 'Choose wisely...' }]
                 };
+            }
+            
+            initMusicConfigs() {
+                // Each level: scale (MIDI notes), tempo (BPM), waveform, bassLine, feel
+                this.musicConfigs = {
+                    1:  { scale: [60,62,64,67,69], tempo: 120, wave: 'triangle', bass: [48,48,52,55], mood: 'bright' },
+                    2:  { scale: [62,64,66,69,71], tempo: 130, wave: 'triangle', bass: [50,50,54,57], mood: 'adventurous' },
+                    3:  { scale: [64,66,68,71,73], tempo: 140, wave: 'square',   bass: [52,52,55,59], mood: 'energetic' },
+                    4:  { scale: [65,67,69,72,74], tempo: 145, wave: 'square',   bass: [53,53,57,60], mood: 'climbing' },
+                    5:  { scale: [60,63,65,67,70], tempo: 155, wave: 'sawtooth', bass: [48,51,48,55], mood: 'boss' },
+                    6:  { scale: [67,69,71,74,76], tempo: 110, wave: 'sine',     bass: [55,55,59,62], mood: 'chill' },
+                    7:  { scale: [69,71,72,74,76], tempo: 115, wave: 'sine',     bass: [57,57,60,64], mood: 'groovy' },
+                    8:  { scale: [64,67,69,71,74], tempo: 125, wave: 'triangle', bass: [52,55,52,59], mood: 'focused' },
+                    9:  { scale: [62,65,67,69,72], tempo: 135, wave: 'triangle', bass: [50,53,50,57], mood: 'puzzle' },
+                    10: { scale: [60,63,66,67,70], tempo: 150, wave: 'sawtooth', bass: [48,51,54,48], mood: 'boss' },
+                    11: { scale: [72,74,76,79,81], tempo: 90,  wave: 'square',   bass: [48,48,52,55], mood: 'retro' },
+                    12: { scale: [74,76,78,81,83], tempo: 95,  wave: 'square',   bass: [50,50,53,57], mood: 'retro' },
+                    13: { scale: [67,69,71,74,76], tempo: 100, wave: 'square',   bass: [55,55,59,62], mood: 'building' },
+                    14: { scale: [60,64,67,69,72], tempo: 105, wave: 'square',   bass: [48,52,55,48], mood: 'epic' },
+                    15: { scale: [60,63,65,67,70,72,74,75], tempo: 160, wave: 'sawtooth', bass: [48,51,55,48], mood: 'final' }
+                };
+            }
+            
+            startMusic(levelNum) {
+                this.stopMusic();
+                if (this.musicMuted) return;
+                
+                // Create AudioContext on first user interaction
+                if (!this.audioCtx) {
+                    try {
+                        this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    } catch(e) { return; }
+                }
+                if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+                
+                const config = this.musicConfigs[levelNum];
+                if (!config) return;
+                
+                const ctx = this.audioCtx;
+                const bps = config.tempo / 60;
+                const beatLen = 1 / bps;
+                
+                // Master gain
+                const master = ctx.createGain();
+                master.gain.value = 0.15;
+                master.connect(ctx.destination);
+                this.musicNodes.push(master);
+                
+                // Create a looping melody + bass pattern
+                const melodyLen = 16; // 16 beats per loop
+                const loopDuration = melodyLen * beatLen;
+                
+                // Generate a deterministic melody pattern from level number
+                const rng = (seed) => { seed = (seed * 16807 + 0) % 2147483647; return seed; };
+                let seed = levelNum * 12345;
+                const melodyPattern = [];
+                for (let i = 0; i < melodyLen; i++) {
+                    seed = rng(seed);
+                    const noteIdx = seed % config.scale.length;
+                    const rest = (seed >> 8) % 4 === 0; // ~25% rests
+                    melodyPattern.push(rest ? -1 : config.scale[noteIdx]);
+                }
+                
+                // Schedule loop function
+                const scheduleLoop = (startTime) => {
+                    if (!this.musicPlaying) return;
+                    
+                    // Melody
+                    melodyPattern.forEach((note, i) => {
+                        if (note < 0) return;
+                        const t = startTime + i * beatLen;
+                        if (t < ctx.currentTime - 0.1) return;
+                        
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.type = config.wave;
+                        osc.frequency.value = 440 * Math.pow(2, (note - 69) / 12);
+                        
+                        // ADSR envelope
+                        const noteLen = beatLen * 0.8;
+                        gain.gain.setValueAtTime(0, t);
+                        gain.gain.linearRampToValueAtTime(0.3, t + 0.02);
+                        gain.gain.exponentialRampToValueAtTime(0.15, t + noteLen * 0.3);
+                        gain.gain.exponentialRampToValueAtTime(0.001, t + noteLen);
+                        
+                        osc.connect(gain);
+                        gain.connect(master);
+                        osc.start(t);
+                        osc.stop(t + noteLen);
+                        this.musicNodes.push(osc, gain);
+                    });
+                    
+                    // Bass line (4 notes per loop, each 4 beats)
+                    config.bass.forEach((note, i) => {
+                        const t = startTime + i * 4 * beatLen;
+                        if (t < ctx.currentTime - 0.1) return;
+                        
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.type = 'sine';
+                        osc.frequency.value = 440 * Math.pow(2, (note - 69) / 12);
+                        
+                        const dur = 4 * beatLen * 0.9;
+                        gain.gain.setValueAtTime(0, t);
+                        gain.gain.linearRampToValueAtTime(0.25, t + 0.05);
+                        gain.gain.setValueAtTime(0.2, t + dur * 0.7);
+                        gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+                        
+                        osc.connect(gain);
+                        gain.connect(master);
+                        osc.start(t);
+                        osc.stop(t + dur);
+                        this.musicNodes.push(osc, gain);
+                    });
+                    
+                    // Hi-hat / percussion (for energetic levels)
+                    if (config.tempo >= 120) {
+                        for (let i = 0; i < melodyLen; i++) {
+                            const t = startTime + i * beatLen;
+                            if (t < ctx.currentTime - 0.1) return;
+                            
+                            // Noise burst for hi-hat
+                            const bufSize = ctx.sampleRate * 0.05;
+                            const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+                            const data = buf.getChannelData(0);
+                            for (let j = 0; j < bufSize; j++) data[j] = (Math.random() * 2 - 1) * 0.3;
+                            
+                            const noise = ctx.createBufferSource();
+                            noise.buffer = buf;
+                            const hiGain = ctx.createGain();
+                            const accent = i % 4 === 0 ? 0.12 : (i % 2 === 0 ? 0.06 : 0.03);
+                            hiGain.gain.setValueAtTime(accent, t);
+                            hiGain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+                            
+                            // Bandpass for metallic sound
+                            const filter = ctx.createBiquadFilter();
+                            filter.type = 'highpass';
+                            filter.frequency.value = 8000;
+                            
+                            noise.connect(filter);
+                            filter.connect(hiGain);
+                            hiGain.connect(master);
+                            noise.start(t);
+                            noise.stop(t + 0.06);
+                            this.musicNodes.push(noise, hiGain, filter);
+                        }
+                    }
+                    
+                    // Schedule next loop
+                    const nextStart = startTime + loopDuration;
+                    const scheduleAhead = loopDuration * 0.8;
+                    this._musicTimer = setTimeout(() => scheduleLoop(nextStart), scheduleAhead * 1000);
+                };
+                
+                this.musicPlaying = true;
+                scheduleLoop(ctx.currentTime + 0.1);
+            }
+            
+            stopMusic() {
+                this.musicPlaying = false;
+                if (this._musicTimer) {
+                    clearTimeout(this._musicTimer);
+                    this._musicTimer = null;
+                }
+                this.musicNodes.forEach(node => {
+                    try { node.disconnect(); } catch(e) {}
+                    try { if (node.stop) node.stop(); } catch(e) {}
+                });
+                this.musicNodes = [];
+            }
+            
+            toggleMusic() {
+                this.musicMuted = !this.musicMuted;
+                const btn = document.getElementById('muteBtn');
+                if (this.musicMuted) {
+                    this.stopMusic();
+                    btn.textContent = '🔇 Music';
+                } else {
+                    btn.textContent = '🔊 Music';
+                    if (this.state.currentLevel) this.startMusic(this.state.currentLevel);
+                }
             }
             
             setupEventListeners() {
@@ -801,6 +989,9 @@
                 }
                 
                 this.updateUI();
+                
+                // Start level music
+                this.startMusic(levelNum);
             }
             
             generatePhase1Level(levelNum) {
