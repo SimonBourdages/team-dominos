@@ -854,30 +854,34 @@
                 this.canvas = newCanvas;
                 
                 this.ctx = this.canvas.getContext('2d');
-                this.state.renderMode = 'isometric';
+                this.state.renderMode = '2d-platformer';
                 
                 // Re-attach click handler
                 this.canvas.addEventListener('click', (e) => {
                     if (this.state.phase === 3) this.handleCanvasClick(e);
                 });
                 
-                // Player position in 2D (car)
-                this.player = { x: 10, y: 0, z: 10, vx: 0, vy: 0, vz: 0, angle: 0 };
+                // 2D platformer player: x, y position, velocity, facing direction
+                this.player = { x: 100, y: 0, vx: 0, vy: 0, facingRight: true, grounded: false };
+                this.p2Gravity = 900;
+                this.p2JumpForce = -450;
+                this.p2Speed = 250;
                 
                 // Start with 1 AI worker
                 if (this.state.aiWorkers.length === 0) {
                     this.state.aiWorkers.push({
                         id: this.workerIdCounter++,
-                        x: 12,
-                        y: 0,
-                        z: 12,
+                        x: 200, y: 0,
                         targetOKR: null
                     });
                 }
                 
+                // Camera
+                this.p2CamX = 0;
+                
                 // Update UI
                 document.getElementById('controlsText').innerHTML = 
-                    'WASD - Drive<br>Collect OKR coins<br>Hire more workers!';
+                    'A/D - Move<br>SPACE - Jump<br>Collect OKR coins!';
                 document.getElementById('workers').style.display = 'block';
                 this.updateWorkerUI();
             }
@@ -1565,33 +1569,66 @@
             }
             
             generatePhase2Level(levelNum) {
-                // Reset player in 2D
-                this.player = { x: 5, y: 0, z: 5, vx: 0, vy: 0, vz: 0, angle: 0 };
+                // 2D side-scrolling platformer level
+                this.player = { x: 100, y: 0, vx: 0, vy: 0, facingRight: true, grounded: false };
+                this.p2CamX = 0;
                 
-                // Larger map with random layout
+                const groundY = this.canvas ? this.canvas.height - 80 : 640;
+                this.p2GroundY = groundY;
+                
+                // Generate platforms — ground + floating platforms
                 this.platforms = [];
-                const size = 40;
-                for (let x = 0; x < size; x++) {
-                    for (let z = 0; z < size; z++) {
-                        this.platforms.push({ x, y: 0, z, type: 'floor' });
+                const levelWidth = 800 + levelNum * 400; // wider each level
+                
+                // Ground segments with gaps
+                const segLen = 200;
+                for (let x = 0; x < levelWidth; x += segLen) {
+                    const hasGap = x > 300 && Math.sin(x * 0.01 + levelNum * 7) > 0.4;
+                    if (!hasGap) {
+                        this.platforms.push({ x, y: groundY, w: segLen - 10, h: 40, type: 'ground' });
                     }
                 }
                 
-                // Scatter OKRs across the larger map
+                // Floating platforms
+                const platCount = 8 + levelNum * 3;
+                const rng = (s) => { s = (s * 16807) % 2147483647; return s; };
+                let seed = levelNum * 9999;
+                for (let i = 0; i < platCount; i++) {
+                    seed = rng(seed);
+                    const px = 200 + (seed % (levelWidth - 400));
+                    seed = rng(seed);
+                    const py = groundY - 80 - (seed % 250);
+                    seed = rng(seed);
+                    const pw = 80 + (seed % 120);
+                    this.platforms.push({ x: px, y: py, w: pw, h: 20, type: 'float' });
+                }
+                
+                // OKR coins scattered on platforms and in air
                 this.okrs = [];
                 for (let i = 0; i < this.currentLevelData.okrGoal; i++) {
+                    seed = rng(seed);
+                    const plat = this.platforms[seed % this.platforms.length];
+                    seed = rng(seed);
                     this.okrs.push({
-                        x: 2 + Math.random() * (size - 4),
-                        y: 1,
-                        z: 2 + Math.random() * (size - 4),
+                        x: plat.x + (seed % Math.max(1, plat.w - 20)) + 10,
+                        y: plat.y - 40 - (seed % 60),
                         collected: false
                     });
                 }
                 
-                // HQ at a random far corner
-                this.jrodHQ = { x: size - 5, y: 1, z: size - 5 };
+                // Car lift goal at end
+                this.jrodHQ = { x: levelWidth - 150, y: groundY };
+                // Ensure ground under goal
+                this.platforms.push({ x: levelWidth - 250, y: groundY, w: 300, h: 40, type: 'ground' });
                 
-                // Add spectators for this level
+                // Position AI workers
+                this.state.aiWorkers.forEach((w, i) => {
+                    w.x = 150 + i * 80;
+                    w.y = groundY - 30;
+                    w.targetOKR = null;
+                });
+                
+                // Add spectators
                 this.loadSpectatorsAnime(levelNum);
             }
             
@@ -1764,81 +1801,101 @@
             }
             
             updatePhase2(dt) {
-                const speed = 8;
+                if (!this.player) return;
+                const p = this.player;
                 
-                // Isometric movement: remap WASD to iso directions
-                // W = up-left on screen (-x, -z in world)
-                // S = down-right (+x, +z)
-                // A = down-left (-x, +z) 
-                // D = up-right (+x, -z)
-                let moveX = 0, moveZ = 0;
-                if (this.keys['KeyW']) { moveX -= 1; moveZ -= 1; }
-                if (this.keys['KeyS']) { moveX += 1; moveZ += 1; }
-                if (this.keys['KeyA']) { moveX -= 1; moveZ += 1; }
-                if (this.keys['KeyD']) { moveX += 1; moveZ -= 1; }
+                // Horizontal movement
+                let moveX = 0;
+                if (this.keys['KeyA'] || this.keys['ArrowLeft']) moveX = -1;
+                if (this.keys['KeyD'] || this.keys['ArrowRight']) moveX = 1;
                 
-                if (moveX !== 0 || moveZ !== 0) {
-                    const len = Math.sqrt(moveX * moveX + moveZ * moveZ);
-                    this.player.x += (moveX / len) * speed * dt;
-                    this.player.z += (moveZ / len) * speed * dt;
-                    this.player.angle = Math.atan2(moveX, moveZ);
+                if (moveX !== 0) {
+                    p.vx = moveX * this.p2Speed;
+                    p.facingRight = moveX > 0;
+                } else {
+                    p.vx *= 0.8; // friction
                 }
                 
-                // Keep in bounds
-                this.player.x = Math.max(-5, Math.min(45, this.player.x));
-                this.player.z = Math.max(-5, Math.min(45, this.player.z));
+                // Jump
+                if ((this.keys['Space'] || this.keys['KeyW'] || this.keys['ArrowUp']) && p.grounded) {
+                    p.vy = this.p2JumpForce;
+                    p.grounded = false;
+                }
                 
-                // MP slowly regenerates
-                this.state.currencies.mp += 0.5 * dt;
+                // Gravity
+                p.vy += this.p2Gravity * dt;
                 
-                // Update AI workers
-                this.state.aiWorkers.forEach(worker => {
-                    if (!worker.targetOKR) {
-                        // Find nearest uncollected OKR
-                        const available = this.okrs.filter(o => !o.collected && !o.claimed);
-                        if (available.length > 0) {
-                            worker.targetOKR = available[0];
-                            worker.targetOKR.claimed = true;
-                        }
-                    } else {
-                        // Move towards OKR
-                        const dx = worker.targetOKR.x - worker.x;
-                        const dz = worker.targetOKR.z - worker.z;
-                        const dist = Math.sqrt(dx * dx + dz * dz);
-                        
-                        if (dist < 0.5) {
-                            // Collect OKR
-                            worker.targetOKR.collected = true;
-                            this.collectOKR();
-                            worker.targetOKR = null;
-                        } else {
-                            // Move
-                            const workerSpeed = 3 * (this.state.phase === 3 ? 0.25 : 1);
-                            worker.x += (dx / dist) * workerSpeed * dt;
-                            worker.z += (dz / dist) * workerSpeed * dt;
-                        }
+                // Apply velocity
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                
+                // Platform collision
+                p.grounded = false;
+                const pw = 30, ph = 36; // player hitbox
+                this.platforms.forEach(plat => {
+                    const onTop = p.x + pw/2 > plat.x && p.x - pw/2 < plat.x + plat.w;
+                    const falling = p.vy >= 0;
+                    const feetY = p.y + ph;
+                    const wasAbove = (feetY - p.vy * dt) <= plat.y + 4;
+                    if (onTop && falling && feetY >= plat.y && wasAbove) {
+                        p.y = plat.y - ph;
+                        p.vy = 0;
+                        p.grounded = true;
                     }
                 });
                 
-                // Player can also collect
+                // Death check — fall off screen
+                if (p.y > this.canvas.height + 100) {
+                    p.x = 100;
+                    p.y = this.p2GroundY - 100;
+                    p.vx = 0; p.vy = 0;
+                }
+                
+                // Keep in horizontal bounds
+                p.x = Math.max(0, p.x);
+                
+                // MP regeneration
+                this.state.currencies.mp += 0.5 * dt;
+                
+                // Player collects OKRs
                 this.okrs.forEach(okr => {
                     if (!okr.collected) {
-                        const dx = this.player.x - okr.x;
-                        const dz = this.player.z - okr.z;
-                        const dist = Math.sqrt(dx * dx + dz * dz);
-                        if (dist < 1) {
+                        const dx = p.x - okr.x;
+                        const dy = p.y - okr.y;
+                        if (Math.abs(dx) < 30 && Math.abs(dy) < 30) {
                             okr.collected = true;
                             this.collectOKR();
                         }
                     }
                 });
                 
-                // Check completion
-                if (this.state.okrsCollected >= this.currentLevelData.okrGoal) {
-                    const dx = this.player.x - this.jrodHQ.x;
-                    const dz = this.player.z - this.jrodHQ.z;
-                    const dist = Math.sqrt(dx * dx + dz * dz);
-                    if (dist < 2) {
+                // AI workers collect OKRs (walk on ground)
+                this.state.aiWorkers.forEach(worker => {
+                    if (!worker.targetOKR) {
+                        const available = this.okrs.filter(o => !o.collected && !o.claimed);
+                        if (available.length > 0) {
+                            worker.targetOKR = available[0];
+                            worker.targetOKR.claimed = true;
+                        }
+                    } else {
+                        const dx = worker.targetOKR.x - worker.x;
+                        const dist = Math.abs(dx);
+                        if (dist < 30) {
+                            worker.targetOKR.collected = true;
+                            this.collectOKR();
+                            worker.targetOKR = null;
+                        } else {
+                            worker.x += Math.sign(dx) * 120 * dt;
+                        }
+                    }
+                });
+                
+                // Check completion: reach car lift with enough OKRs
+                const timeSinceLevelStart = performance.now() - (this.levelStartTime || 0);
+                if (this.state.okrsCollected >= this.currentLevelData.okrGoal && this.jrodHQ && timeSinceLevelStart > 2000) {
+                    const dx = p.x - this.jrodHQ.x;
+                    const dy = p.y - (this.jrodHQ.y - 36);
+                    if (Math.abs(dx) < 60 && Math.abs(dy) < 60 && !this.levelCompleting) {
                         this.completeLevel();
                     }
                 }
@@ -1851,323 +1908,239 @@
                 const canvas = this.canvas;
                 if (!ctx) return;
                 
-                // Anime gradient sky
+                // Camera: smooth follow on X axis
+                const targetCamX = this.player.x - canvas.width / 3;
+                this.p2CamX += (targetCamX - this.p2CamX) * 0.1;
+                this.p2CamX = Math.max(0, this.p2CamX);
+                const cx = this.p2CamX;
+                
+                // === SKY ===
                 const skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-                skyGrad.addColorStop(0, '#87CEEB');
-                skyGrad.addColorStop(0.6, '#FFB6C1');
+                skyGrad.addColorStop(0, '#4a90d9');
+                skyGrad.addColorStop(0.5, '#87CEEB');
+                skyGrad.addColorStop(0.8, '#FFB6C1');
                 skyGrad.addColorStop(1, '#FFA07A');
                 ctx.fillStyle = skyGrad;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 
-                // Clouds
-                ctx.fillStyle = 'rgba(255,255,255,0.85)';
-                ctx.strokeStyle = '#000';
-                ctx.lineWidth = 2;
-                for (let i = 0; i < 5; i++) {
-                    const cx = ((this.gameTime * 15 + i * 250) % (canvas.width + 200)) - 100;
-                    const cy = 40 + i * 60;
+                // Parallax clouds
+                ctx.fillStyle = 'rgba(255,255,255,0.8)';
+                for (let i = 0; i < 8; i++) {
+                    const cloudX = ((i * 300 + this.gameTime * 10 - cx * 0.1) % (canvas.width + 300)) - 150;
+                    const cloudY = 30 + (i * 47) % 150;
                     ctx.beginPath();
-                    ctx.arc(cx, cy, 25, 0, Math.PI * 2);
-                    ctx.arc(cx + 20, cy, 30, 0, Math.PI * 2);
-                    ctx.arc(cx + 40, cy, 25, 0, Math.PI * 2);
-                    ctx.fill(); ctx.stroke();
+                    ctx.arc(cloudX, cloudY, 20 + i * 3, 0, Math.PI * 2);
+                    ctx.arc(cloudX + 25, cloudY - 5, 25 + i * 2, 0, Math.PI * 2);
+                    ctx.arc(cloudX + 50, cloudY, 20 + i * 3, 0, Math.PI * 2);
+                    ctx.fill();
                 }
                 
-                const halfW = canvas.width / 2;
-                const halfH = canvas.height / 2;
+                // Parallax mountains
+                ctx.fillStyle = '#6a8fa8';
+                ctx.beginPath();
+                ctx.moveTo(0, this.p2GroundY - 40);
+                for (let i = 0; i < canvas.width + 100; i += 80) {
+                    const h = 60 + Math.sin((i + cx * 0.2) * 0.01) * 40 + Math.sin((i + cx * 0.2) * 0.025) * 20;
+                    ctx.lineTo(i, this.p2GroundY - 40 - h);
+                }
+                ctx.lineTo(canvas.width, this.p2GroundY - 40);
+                ctx.closePath();
+                ctx.fill();
                 
-                // World-to-screen: project world coords to isometric screen coords
-                // Camera tracks player exactly (no lerp = no grid drift)
-                const camWX = this.player.x;
-                const camWZ = this.player.z;
-                
-                const worldToScreen = (wx, wy, wz) => {
-                    const rx = wx - camWX;
-                    const rz = wz - camWZ;
-                    return {
-                        x: halfW + (rx - rz) * 32,
-                        y: halfH + (rx + rz) * 16 - wy * 24
-                    };
-                };
-                
-                // Draw office floor tiles
-                const tileSize = 32;
-                const gridRange = 16;
-                const baseWX = Math.floor(camWX);
-                const baseWZ = Math.floor(camWZ);
-                
-                for (let dx = -gridRange; dx <= gridRange; dx++) {
-                    for (let dz = -gridRange; dz <= gridRange; dz++) {
-                        const wx = baseWX + dx;
-                        const wz = baseWZ + dz;
-                        const s = worldToScreen(wx, 0, wz);
-                        
-                        // Cull off-screen
-                        if (s.x < -80 || s.x > canvas.width + 80 || s.y < -80 || s.y > canvas.height + 80) continue;
-                        
-                        // Only draw tiles within map bounds (0..39)
-                        const inMap = wx >= 0 && wx < 40 && wz >= 0 && wz < 40;
-                        
-                        // Carpet tile
-                        const dark = (wx + wz) % 2 === 0;
-                        ctx.fillStyle = inMap ? (dark ? '#6b7b8d' : '#7a8a9c') : '#3a4a5a';
-                        ctx.beginPath();
-                        ctx.moveTo(s.x, s.y);
-                        ctx.lineTo(s.x + tileSize, s.y + tileSize / 2);
-                        ctx.lineTo(s.x, s.y + tileSize);
-                        ctx.lineTo(s.x - tileSize, s.y + tileSize / 2);
-                        ctx.closePath();
-                        ctx.fill();
-                        // Subtle grid lines
-                        ctx.strokeStyle = inMap ? '#5a6a7a' : '#2a3a4a';
-                        ctx.lineWidth = 0.5;
-                        ctx.stroke();
-                        
-                        if (!inMap) continue;
-                        
-                        // Cubicle walls (deterministic from world coords)
-                        const seed = ((wx * 7 + wz * 13) & 0xff);
-                        if (seed < 60 && wx % 3 === 0) {
-                            ctx.fillStyle = '#b0b8c0';
-                            ctx.strokeStyle = '#000';
-                            ctx.lineWidth = 2;
-                            ctx.beginPath();
-                            ctx.moveTo(s.x - tileSize, s.y + tileSize / 2);
-                            ctx.lineTo(s.x - tileSize, s.y + tileSize / 2 - 18);
-                            ctx.lineTo(s.x, s.y - 18);
-                            ctx.lineTo(s.x, s.y);
-                            ctx.closePath();
-                            ctx.fill(); ctx.stroke();
-                        }
-                        if (seed < 60 && wz % 3 === 0) {
-                            ctx.fillStyle = '#a8b0b8';
-                            ctx.strokeStyle = '#000';
-                            ctx.lineWidth = 2;
-                            ctx.beginPath();
-                            ctx.moveTo(s.x, s.y);
-                            ctx.lineTo(s.x, s.y - 18);
-                            ctx.lineTo(s.x + tileSize, s.y + tileSize / 2 - 18);
-                            ctx.lineTo(s.x + tileSize, s.y + tileSize / 2);
-                            ctx.closePath();
-                            ctx.fill(); ctx.stroke();
-                        }
-                        
-                        // Desks
-                        if (seed > 180 && seed < 210) {
-                            ctx.fillStyle = '#8B6914';
-                            ctx.strokeStyle = '#5a4510';
-                            ctx.lineWidth = 1.5;
-                            ctx.beginPath();
-                            ctx.moveTo(s.x, s.y + 4);
-                            ctx.lineTo(s.x + 14, s.y + 11);
-                            ctx.lineTo(s.x, s.y + 18);
-                            ctx.lineTo(s.x - 14, s.y + 11);
-                            ctx.closePath();
-                            ctx.fill(); ctx.stroke();
-                            // Monitor
-                            ctx.fillStyle = '#333';
-                            ctx.fillRect(s.x - 4, s.y + 2, 8, 6);
-                            ctx.fillStyle = '#4488ff';
-                            ctx.fillRect(s.x - 3, s.y + 3, 6, 4);
-                        }
-                        
-                        // Potted plants
-                        if (seed > 240) {
-                            ctx.fillStyle = '#6b4226';
-                            ctx.fillRect(s.x - 3, s.y + 10, 6, 6);
-                            ctx.fillStyle = '#228b22';
-                            ctx.beginPath();
-                            ctx.arc(s.x, s.y + 6, 6, 0, Math.PI * 2);
-                            ctx.fill();
-                        }
-                    }
+                // Parallax trees
+                ctx.fillStyle = '#3a7a3a';
+                for (let i = 0; i < canvas.width + 50; i += 70) {
+                    const tx = i + ((cx * 0.3) % 70);
+                    const ty = this.p2GroundY - 50;
+                    ctx.beginPath();
+                    ctx.moveTo(tx, ty);
+                    ctx.lineTo(tx - 15, ty + 30);
+                    ctx.lineTo(tx + 15, ty + 30);
+                    ctx.fill();
                 }
                 
-                // Draw OKR coins
-                this.okrs.forEach(okr => {
-                    if (!okr.collected) {
-                        const s = worldToScreen(okr.x, okr.y, okr.z);
-                        const bounce = Math.sin(this.gameTime * 3 + okr.x) * 4;
-                        
-                        // Shadow
-                        ctx.fillStyle = 'rgba(0,0,0,0.2)';
-                        ctx.beginPath();
-                        ctx.ellipse(s.x, s.y + 10, 12, 6, 0, 0, Math.PI * 2);
-                        ctx.fill();
-                        
-                        // Gold coin
-                        ctx.fillStyle = '#ffd700';
-                        ctx.strokeStyle = '#b8860b';
+                // === PLATFORMS ===
+                this.platforms.forEach(plat => {
+                    const sx = plat.x - cx;
+                    const sy = plat.y;
+                    if (sx + plat.w < -50 || sx > canvas.width + 50) return;
+                    
+                    if (plat.type === 'ground') {
+                        // Grass top
+                        ctx.fillStyle = '#4a8c3f';
+                        ctx.fillRect(sx, sy, plat.w, 8);
+                        // Dirt body
+                        ctx.fillStyle = '#8B6914';
+                        ctx.fillRect(sx, sy + 8, plat.w, plat.h - 8);
+                        // Grass blades
+                        ctx.fillStyle = '#5aa84f';
+                        for (let gx = sx; gx < sx + plat.w; gx += 12) {
+                            ctx.fillRect(gx, sy - 3, 3, 5);
+                        }
+                    } else {
+                        // Floating platform - anime style with thick outline
+                        ctx.fillStyle = '#7a8a9c';
+                        ctx.strokeStyle = '#000';
                         ctx.lineWidth = 3;
                         ctx.beginPath();
-                        ctx.arc(s.x, s.y - 10 + bounce, 14, 0, Math.PI * 2);
+                        ctx.roundRect(sx, sy, plat.w, plat.h, 4);
                         ctx.fill(); ctx.stroke();
-                        
-                        // Inner ring
-                        ctx.strokeStyle = '#daa520';
-                        ctx.lineWidth = 1.5;
-                        ctx.beginPath();
-                        ctx.arc(s.x, s.y - 10 + bounce, 10, 0, Math.PI * 2);
-                        ctx.stroke();
-                        
-                        // OKR text
-                        ctx.fillStyle = '#000';
-                        ctx.font = 'bold 9px Arial';
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'middle';
-                        ctx.fillText('OKR', s.x, s.y - 10 + bounce);
-                        
-                        // Sparkle
-                        const sparkle = Math.sin(this.gameTime * 5 + okr.x * 2) * 0.5 + 0.5;
-                        ctx.fillStyle = `rgba(255,255,200,${sparkle})`;
-                        ctx.beginPath();
-                        ctx.arc(s.x - 5, s.y - 16 + bounce, 2, 0, Math.PI * 2);
-                        ctx.fill();
+                        // Highlight
+                        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                        ctx.fillRect(sx + 4, sy + 2, plat.w - 8, 4);
                     }
                 });
                 
-                // Draw car lift goal
-                if (this.jrodHQ) {
-                    const s = worldToScreen(this.jrodHQ.x, 0, this.jrodHQ.z);
+                // === OKR COINS ===
+                this.okrs.forEach(okr => {
+                    if (okr.collected) return;
+                    const sx = okr.x - cx;
+                    const sy = okr.y;
+                    if (sx < -30 || sx > canvas.width + 30) return;
+                    const bounce = Math.sin(this.gameTime * 3 + okr.x * 0.1) * 5;
                     
-                    ctx.fillStyle = '#555';
-                    ctx.strokeStyle = '#000';
-                    ctx.lineWidth = 2;
-                    ctx.fillRect(s.x - 25, s.y - 5, 50, 10);
-                    ctx.strokeRect(s.x - 25, s.y - 5, 50, 10);
-                    
-                    ctx.fillStyle = '#888';
-                    ctx.fillRect(s.x - 22, s.y - 50, 6, 50);
-                    ctx.fillRect(s.x + 16, s.y - 50, 6, 50);
-                    ctx.strokeRect(s.x - 22, s.y - 50, 6, 50);
-                    ctx.strokeRect(s.x + 16, s.y - 50, 6, 50);
-                    
-                    ctx.fillStyle = '#ffcc00';
-                    for (let i = 0; i < 3; i++) ctx.fillRect(s.x - 20, s.y - 10 - i * 15, 40, 4);
-                    
-                    const arrowBounce = Math.sin(this.gameTime * 2) * 5;
-                    ctx.fillStyle = '#00ff00';
+                    // Shadow
+                    ctx.fillStyle = 'rgba(0,0,0,0.15)';
                     ctx.beginPath();
-                    ctx.moveTo(s.x, s.y - 55 + arrowBounce);
-                    ctx.lineTo(s.x - 8, s.y - 45 + arrowBounce);
-                    ctx.lineTo(s.x + 8, s.y - 45 + arrowBounce);
+                    ctx.ellipse(sx, sy + 18, 10, 4, 0, 0, Math.PI * 2);
                     ctx.fill();
-                    
-                    // Label
-                    ctx.fillStyle = '#fff';
-                    ctx.font = 'bold 11px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('CAR LIFT', s.x, s.y - 58 + arrowBounce);
-                }
-                
-                // Draw AI workers
-                this.state.aiWorkers.forEach(worker => {
-                    const s = worldToScreen(worker.x, 0, worker.z);
-                    const wy = s.y - 15;
-                    
-                    ctx.fillStyle = '#6a6aff';
-                    ctx.strokeStyle = '#000';
+                    // Coin
+                    ctx.fillStyle = '#ffd700';
+                    ctx.strokeStyle = '#b8860b';
                     ctx.lineWidth = 2;
-                    ctx.fillRect(s.x - 8, wy - 10, 16, 20);
-                    ctx.strokeRect(s.x - 8, wy - 10, 16, 20);
-                    
-                    ctx.fillStyle = '#8888ff';
                     ctx.beginPath();
-                    ctx.arc(s.x, wy - 16, 8, 0, Math.PI * 2);
+                    ctx.arc(sx, sy + bounce, 12, 0, Math.PI * 2);
                     ctx.fill(); ctx.stroke();
-                    
-                    ctx.fillStyle = '#00ff00';
-                    ctx.fillRect(s.x - 4, wy - 18, 3, 3);
-                    ctx.fillRect(s.x + 1, wy - 18, 3, 3);
-                    
-                    ctx.strokeStyle = '#888';
-                    ctx.lineWidth = 1;
-                    ctx.beginPath();
-                    ctx.moveTo(s.x, wy - 24);
-                    ctx.lineTo(s.x, wy - 30);
-                    ctx.stroke();
-                    ctx.fillStyle = '#f00';
-                    ctx.beginPath();
-                    ctx.arc(s.x, wy - 30, 2, 0, Math.PI * 2);
-                    ctx.fill();
+                    ctx.strokeStyle = '#daa520'; ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.arc(sx, sy + bounce, 8, 0, Math.PI * 2); ctx.stroke();
+                    ctx.fillStyle = '#000';
+                    ctx.font = 'bold 8px Arial';
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText('OKR', sx, sy + bounce);
                 });
                 
-                // Draw player car at screen center (camera tracks exactly)
-                const carScreenX = halfW;
-                const carScreenY = halfH - 15;
-                const worldAngle = this.player.angle || 0;
-                const isoAngle = worldAngle + Math.PI / 4;
-                ctx.save();
-                ctx.translate(carScreenX, carScreenY);
-                ctx.rotate(isoAngle);
+                // === CAR LIFT GOAL ===
+                if (this.jrodHQ) {
+                    const hx = this.jrodHQ.x - cx;
+                    const hy = this.jrodHQ.y;
+                    // Base
+                    ctx.fillStyle = '#555';
+                    ctx.fillRect(hx - 30, hy - 5, 60, 10);
+                    // Pillars
+                    ctx.fillStyle = '#888';
+                    ctx.fillRect(hx - 28, hy - 80, 8, 80);
+                    ctx.fillRect(hx + 20, hy - 80, 8, 80);
+                    // Yellow stripes
+                    ctx.fillStyle = '#ffcc00';
+                    for (let i = 0; i < 4; i++) ctx.fillRect(hx - 20, hy - 15 - i * 18, 40, 5);
+                    // Arrow
+                    const ab = Math.sin(this.gameTime * 2) * 6;
+                    ctx.fillStyle = '#00ff00';
+                    ctx.beginPath();
+                    ctx.moveTo(hx, hy - 90 + ab);
+                    ctx.lineTo(hx - 10, hy - 78 + ab);
+                    ctx.lineTo(hx + 10, hy - 78 + ab);
+                    ctx.fill();
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 12px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('CAR LIFT', hx, hy - 95 + ab);
+                }
                 
-                // Car shadow
-                ctx.fillStyle = 'rgba(0,0,0,0.2)';
-                ctx.beginPath();
-                ctx.ellipse(0, 18, 20, 8, 0, 0, Math.PI * 2);
-                ctx.fill();
+                // === AI WORKERS (robots) ===
+                this.state.aiWorkers.forEach(worker => {
+                    const wx = worker.x - cx;
+                    const wy = this.p2GroundY - 30;
+                    if (wx < -30 || wx > canvas.width + 30) return;
+                    const bob = Math.sin(this.gameTime * 4 + worker.id) * 2;
+                    // Body
+                    ctx.fillStyle = '#6a6aff';
+                    ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+                    ctx.fillRect(wx - 10, wy - 12 + bob, 20, 24);
+                    ctx.strokeRect(wx - 10, wy - 12 + bob, 20, 24);
+                    // Head
+                    ctx.fillStyle = '#8888ff';
+                    ctx.beginPath(); ctx.arc(wx, wy - 20 + bob, 10, 0, Math.PI * 2);
+                    ctx.fill(); ctx.stroke();
+                    // Eyes
+                    ctx.fillStyle = '#0f0';
+                    ctx.fillRect(wx - 5, wy - 22 + bob, 4, 4);
+                    ctx.fillRect(wx + 1, wy - 22 + bob, 4, 4);
+                    // Antenna
+                    ctx.strokeStyle = '#888'; ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.moveTo(wx, wy - 30 + bob); ctx.lineTo(wx, wy - 38 + bob); ctx.stroke();
+                    ctx.fillStyle = '#f00';
+                    ctx.beginPath(); ctx.arc(wx, wy - 38 + bob, 3, 0, Math.PI * 2); ctx.fill();
+                });
+                
+                // === PLAYER (blue car, side view) ===
+                const px = this.player.x - cx;
+                const py = this.player.y;
+                const dir = this.player.facingRight ? 1 : -1;
+                ctx.save();
+                ctx.translate(px, py);
+                ctx.scale(dir, 1);
+                
+                // Shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.15)';
+                ctx.beginPath(); ctx.ellipse(0, 36, 22, 6, 0, 0, Math.PI * 2); ctx.fill();
                 
                 // Car body
                 ctx.fillStyle = '#2266cc';
-                ctx.strokeStyle = '#000';
-                ctx.lineWidth = 3;
+                ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
                 ctx.beginPath();
-                ctx.roundRect(-15, -22, 30, 44, 6);
+                ctx.roundRect(-22, 8, 44, 22, 4);
                 ctx.fill(); ctx.stroke();
-                
+                // Cabin
+                ctx.fillStyle = '#3377dd';
+                ctx.beginPath();
+                ctx.roundRect(-14, -4, 28, 16, 3);
+                ctx.fill(); ctx.stroke();
                 // Windshield
                 ctx.fillStyle = '#88ccff';
-                ctx.strokeStyle = '#000';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.roundRect(-10, -16, 20, 10, 3);
-                ctx.fill(); ctx.stroke();
-                
+                ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.roundRect(6, -2, 12, 12, 2); ctx.fill(); ctx.stroke();
                 // Rear window
-                ctx.beginPath();
-                ctx.roundRect(-8, 10, 16, 8, 3);
-                ctx.fill(); ctx.stroke();
-                
-                // Headlights
+                ctx.beginPath(); ctx.roundRect(-16, 0, 10, 10, 2); ctx.fill(); ctx.stroke();
+                // Headlight
                 ctx.fillStyle = '#ffffaa';
-                ctx.beginPath();
-                ctx.arc(-9, -20, 3, 0, Math.PI * 2);
-                ctx.arc(9, -20, 3, 0, Math.PI * 2);
-                ctx.fill();
-                
+                ctx.beginPath(); ctx.arc(20, 16, 4, 0, Math.PI * 2); ctx.fill();
+                // Taillight
+                ctx.fillStyle = '#ff3333';
+                ctx.beginPath(); ctx.arc(-20, 16, 3, 0, Math.PI * 2); ctx.fill();
                 // Wheels
                 ctx.fillStyle = '#222';
-                ctx.fillRect(-17, -12, 5, 10);
-                ctx.fillRect(12, -12, 5, 10);
-                ctx.fillRect(-17, 6, 5, 10);
-                ctx.fillRect(12, 6, 5, 10);
-                
+                ctx.beginPath(); ctx.arc(-12, 30, 7, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(12, 30, 7, 0, Math.PI * 2); ctx.fill();
+                // Wheel hubs
+                ctx.fillStyle = '#888';
+                ctx.beginPath(); ctx.arc(-12, 30, 3, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(12, 30, 3, 0, Math.PI * 2); ctx.fill();
                 // Driver head
                 ctx.fillStyle = '#ffcc99';
-                ctx.beginPath();
-                ctx.arc(0, -2, 5, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.strokeStyle = '#000';
-                ctx.lineWidth = 1;
-                ctx.stroke();
+                ctx.beginPath(); ctx.arc(2, 2, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
                 
                 ctx.restore();
                 
-                // HUD overlay
-                ctx.fillStyle = 'rgba(0,0,0,0.5)';
-                ctx.fillRect(10, canvas.height - 60, 250, 50);
+                // === HUD ===
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(10, 10, 260, 55);
+                ctx.strokeStyle = '#0ff'; ctx.lineWidth = 1;
+                ctx.strokeRect(10, 10, 260, 55);
                 ctx.fillStyle = '#fff';
-                ctx.font = 'bold 14px monospace';
+                ctx.font = 'bold 16px monospace';
                 ctx.textAlign = 'left';
-                ctx.fillText(`OKR: ${this.state.okrsCollected} / ${this.currentLevelData.okrGoal}`, 20, canvas.height - 38);
-                ctx.fillText(`MP: ${Math.floor(this.state.currencies.mp)} | Workers: ${this.state.aiWorkers.length}`, 20, canvas.height - 20);
+                ctx.fillText(`OKR: ${this.state.okrsCollected} / ${this.currentLevelData.okrGoal}`, 20, 32);
+                ctx.font = '13px monospace';
+                ctx.fillStyle = '#aaf';
+                ctx.fillText(`MP: ${Math.floor(this.state.currencies.mp)} | Workers: ${this.state.aiWorkers.length}`, 20, 52);
                 
-                // Mini arrow pointing to car lift when all OKRs collected
                 if (this.state.okrsCollected >= this.currentLevelData.okrGoal && this.jrodHQ) {
                     ctx.fillStyle = '#00ff00';
-                    ctx.font = 'bold 18px monospace';
+                    ctx.font = 'bold 20px monospace';
                     ctx.textAlign = 'center';
-                    ctx.fillText('▶ Drive to the Car Lift! ◀', canvas.width / 2, 30);
+                    ctx.fillText('▶ Jump to the Car Lift! ◀', canvas.width / 2, canvas.height - 20);
                 }
                 
                 // Draw spectators
