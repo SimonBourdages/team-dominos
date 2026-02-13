@@ -727,17 +727,18 @@
                 buildingList.innerHTML = '';
                 
                 const buildings = [
-                    { name: 'Collector', cost: 50, rate: 1 },
-                    { name: 'Processor', cost: 150, rate: 5 },
-                    { name: 'Multiplier', cost: 500, rate: 25 },
-                    { name: 'Synthesizer', cost: 2000, rate: 100 }
+                    { name: 'Collector', cost: 50, rate: 0, acRate: 2, mult: 1 },
+                    { name: 'Processor', cost: 150, rate: 5, acRate: 0, mult: 1 },
+                    { name: 'Multiplier', cost: 500, rate: 0, acRate: 0, mult: 1.5 },
+                    { name: 'Synthesizer', cost: 2000, rate: 100, acRate: 0, mult: 1 }
                 ];
                 
                 buildings.forEach(b => {
                     const btn = document.createElement('button');
                     btn.className = 'building-btn';
                     btn.id = 'building-' + b.name;
-                    btn.textContent = `${b.name} (${b.cost} AC) - ${b.rate}/s`;
+                    const desc = b.acRate > 0 ? `+${b.acRate} AC/s` : b.mult > 1 ? `x${b.mult} all rates` : `${b.rate} OKR/s`;
+                    btn.textContent = `${b.name} (${b.cost} AC) - ${desc}`;
                     btn.onclick = () => this.selectBuilding(b, btn);
                     buildingList.appendChild(btn);
                 });
@@ -764,6 +765,8 @@
                         x, y,
                         name: this.selectedBuilding.name,
                         rate: this.selectedBuilding.rate,
+                        acRate: this.selectedBuilding.acRate || 0,
+                        mult: this.selectedBuilding.mult || 1,
                         id: this.buildingIdCounter++
                     });
                     this.updateUI();
@@ -2096,29 +2099,88 @@
             
             drawPixelSpectators() {
                 const ctx = this.ctx;
+                const canvas = this.canvas;
+                const s = 5; // bigger pixel scale
+                const count = this.currentLevelSpectators.length;
+                if (count === 0) return;
                 
-                this.currentLevelSpectators.forEach(spectator => {
-                    const s = spectator.scale;
+                // Arrange spectators along the bottom edge
+                const totalWidth = canvas.width - 40;
+                const spacing = Math.min(60, totalWidth / count);
+                const startX = (canvas.width - spacing * (count - 1)) / 2;
+                const baseY = canvas.height - 70;
+                
+                this.currentLevelSpectators.forEach((spectator, i) => {
+                    const cx = Math.floor(startX + i * spacing);
+                    const cy = baseY;
+                    const bobble = Math.sin(this.gameTime * 2 + i * 1.3) * 2;
+                    const col = spectator.color || '#888';
                     
-                    // 8x8 pixel sprite scaled up
-                    ctx.fillStyle = spectator.color;
-                    ctx.fillRect(spectator.x * s, spectator.y * s, 8 * s, 8 * s);
+                    // Shadow
+                    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                    ctx.fillRect(cx - 3*s, cy + 5*s + 2, 6*s, s);
                     
-                    // Simple pixel face
+                    // Legs
+                    const legKick = Math.sin(this.gameTime * 3 + i) * s * 0.3;
+                    ctx.fillStyle = '#334';
+                    ctx.fillRect(cx - 2*s, cy + 3*s, s, 2*s + legKick);
+                    ctx.fillRect(cx + 1*s, cy + 3*s, s, 2*s - legKick);
+                    
+                    // Shoes
+                    ctx.fillStyle = '#222';
+                    ctx.fillRect(cx - 2*s - 1, cy + 5*s + legKick, s + 2, s);
+                    ctx.fillRect(cx + 1*s - 1, cy + 5*s - legKick, s + 2, s);
+                    
+                    // Body
+                    ctx.fillStyle = col;
+                    ctx.fillRect(cx - 2*s, cy + bobble, 4*s, 3*s);
+                    // Shirt highlight
+                    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+                    ctx.fillRect(cx - s, cy + bobble, 2*s, s);
+                    
+                    // Arms
+                    const wave = Math.sin(this.gameTime * 4 + i * 2);
+                    ctx.fillStyle = col;
+                    ctx.fillRect(cx - 3*s, cy + bobble + (wave > 0.5 ? -s : 0), s, 2*s);
+                    ctx.fillRect(cx + 2*s, cy + bobble, s, 2*s);
+                    // Hands
+                    ctx.fillStyle = '#ffcc99';
+                    ctx.fillRect(cx - 3*s, cy + bobble + 2*s + (wave > 0.5 ? -s : 0), s, s);
+                    ctx.fillRect(cx + 2*s, cy + bobble + 2*s, s, s);
+                    
+                    // Head
+                    ctx.fillStyle = '#ffcc99';
+                    ctx.fillRect(cx - 1.5*s, cy - 3*s + bobble, 3*s, 3*s);
+                    
+                    // Hair
+                    const hairColors = ['#331100', '#ffdd44', '#884422', '#222', '#cc4400', '#666'];
+                    ctx.fillStyle = hairColors[i % hairColors.length];
+                    ctx.fillRect(cx - 1.5*s, cy - 3.5*s + bobble, 3*s, s);
+                    ctx.fillRect(cx - 2*s, cy - 3*s + bobble, s*0.5, 2*s);
+                    
+                    // Eyes (blink)
+                    const blink = Math.sin(this.gameTime * 0.8 + i * 5) > 0.95;
                     ctx.fillStyle = '#000';
-                    ctx.fillRect((spectator.x + 2) * s, (spectator.y + 2) * s, 1 * s, 1 * s);
-                    ctx.fillRect((spectator.x + 5) * s, (spectator.y + 2) * s, 1 * s, 1 * s);
-                    
-                    // Smile
-                    ctx.fillRect((spectator.x + 2) * s, (spectator.y + 5) * s, 4 * s, 1 * s);
-                    
-                    // Name (only show if scale is 4 or more to avoid clutter)
-                    if (spectator.scale >= 4) {
-                        ctx.fillStyle = '#FFF';
-                        ctx.font = '8px monospace';
-                        ctx.textAlign = 'left';
-                        ctx.fillText(spectator.name, spectator.x * s, (spectator.y + 10) * s);
+                    if (!blink) {
+                        ctx.fillRect(cx - s, cy - 2*s + bobble, s*0.7, s*0.7);
+                        ctx.fillRect(cx + s*0.3, cy - 2*s + bobble, s*0.7, s*0.7);
+                    } else {
+                        ctx.fillRect(cx - s, cy - 1.5*s + bobble, s*0.7, 2);
+                        ctx.fillRect(cx + s*0.3, cy - 1.5*s + bobble, s*0.7, 2);
                     }
+                    
+                    // Mouth
+                    ctx.fillRect(cx - s*0.5, cy - 0.5*s + bobble, s, 2);
+                    
+                    // Name tag with background
+                    const name = spectator.name || '';
+                    ctx.font = 'bold 10px monospace';
+                    ctx.textAlign = 'center';
+                    const tw = ctx.measureText(name).width;
+                    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                    ctx.fillRect(cx - tw/2 - 3, cy - 5*s + bobble - 2, tw + 6, 14);
+                    ctx.fillStyle = '#0ff';
+                    ctx.fillText(name, cx, cy - 4*s + bobble + 6);
                 });
             }
             
@@ -2180,19 +2242,18 @@
                 }
                 
                 // Draw automation nodes as pixel blocks
-                this.automationNodes.forEach((node, i) => {
-                    this.drawPixelNode(node.x, node.y, node.rate, node.name);
-                    
-                    // Connect with pixel line
-                    if (i < this.automationNodes.length - 1) {
-                        const next = this.automationNodes[i + 1];
-                        this.drawPixelConnection(node.x, node.y, next.x, next.y);
-                    }
-                });
-                
-                // Draw central display
+                // Draw central OKR Factory first (behind connections)
                 const centerX = canvas.width / 2;
                 const centerY = canvas.height / 2;
+                this.drawOKRFactory(centerX, centerY);
+                
+                // Draw connections from each node back to central factory, then the nodes on top
+                this.automationNodes.forEach((node, i) => {
+                    this.drawPixelConnection(node.x, node.y, centerX, centerY, node.name);
+                    this.drawPixelNode(node.x, node.y, node.rate, node.name);
+                });
+                
+                // Draw central HUD overlay on top of factory
                 
                 // Production rate display (pixel font style)
                 ctx.fillStyle = '#0ff';
@@ -2263,42 +2324,128 @@
             
             drawPixelNode(x, y, rate, name) {
                 const ctx = this.ctx;
+                const s = 4; // pixel scale for pixel-art look
+                const bx = Math.floor(x);
+                const by = Math.floor(y);
+                const pulse = Math.sin(this.gameTime * 3) * 0.15 + 0.85;
                 
-                // Pixelated glow
-                const glowSize = 48;
-                ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
-                ctx.fillRect(
-                    Math.floor(x - glowSize/2),
-                    Math.floor(y - glowSize/2),
-                    glowSize,
-                    glowSize
-                );
+                if (name === 'Collector') {
+                    // Green funnel/hopper shape
+                    const c1 = '#22cc44', c2 = '#115522', hi = '#66ff88';
+                    // Glow
+                    ctx.fillStyle = `rgba(34, 204, 68, ${0.25 * pulse})`;
+                    ctx.beginPath(); ctx.arc(bx, by, 28, 0, Math.PI * 2); ctx.fill();
+                    // Base plate
+                    this._pxRect(ctx, bx - 5*s, by + 2*s, 10*s, 2*s, c2);
+                    // Hopper body (trapezoid via rects)
+                    this._pxRect(ctx, bx - 4*s, by - 1*s, 8*s, 3*s, c1);
+                    this._pxRect(ctx, bx - 5*s, by - 3*s, 10*s, 2*s, c1);
+                    this._pxRect(ctx, bx - 6*s, by - 5*s, 12*s, 2*s, c1);
+                    // Highlight edge
+                    this._pxRect(ctx, bx - 6*s, by - 5*s, 2*s, 2*s, hi);
+                    this._pxRect(ctx, bx - 5*s, by - 3*s, 2*s, 2*s, hi);
+                    // Funnel opening
+                    this._pxRect(ctx, bx - 2*s, by + 1*s, 4*s, 1*s, c2);
+                    // Spinning coin inside (animated)
+                    const coinW = Math.abs(Math.cos(this.gameTime * 4)) * 3 * s;
+                    ctx.fillStyle = '#ffd700';
+                    ctx.fillRect(bx - coinW/2, by - 2*s, coinW, 2*s);
+                } else if (name === 'Processor') {
+                    // Blue circuit board / chip
+                    const c1 = '#2266dd', c2 = '#113388', hi = '#55aaff', pin = '#88ccff';
+                    ctx.fillStyle = `rgba(34, 102, 221, ${0.25 * pulse})`;
+                    ctx.beginPath(); ctx.arc(bx, by, 30, 0, Math.PI * 2); ctx.fill();
+                    // Chip body
+                    this._pxRect(ctx, bx - 5*s, by - 5*s, 10*s, 10*s, c1);
+                    this._pxRect(ctx, bx - 4*s, by - 4*s, 8*s, 8*s, c2);
+                    // Inner die
+                    this._pxRect(ctx, bx - 2*s, by - 2*s, 4*s, 4*s, hi);
+                    // Blinking core
+                    ctx.fillStyle = pulse > 0.9 ? '#ffffff' : '#55aaff';
+                    ctx.fillRect(bx - s/2, by - s/2, s, s);
+                    // Pins on each side
+                    for (let i = -2; i <= 2; i++) {
+                        this._pxRect(ctx, bx + i*2*s - s/2, by - 6*s, s, s, pin);
+                        this._pxRect(ctx, bx + i*2*s - s/2, by + 5*s, s, s, pin);
+                        this._pxRect(ctx, bx - 6*s, by + i*2*s - s/2, s, s, pin);
+                        this._pxRect(ctx, bx + 5*s, by + i*2*s - s/2, s, s, pin);
+                    }
+                    // Circuit traces
+                    ctx.strokeStyle = pin; ctx.lineWidth = 1;
+                    ctx.strokeRect(bx - 3*s, by - 3*s, 6*s, 6*s);
+                } else if (name === 'Multiplier') {
+                    // Purple crystal / prism shape
+                    const c1 = '#aa44ff', c2 = '#661199', hi = '#dd88ff', spark = '#ffccff';
+                    ctx.fillStyle = `rgba(170, 68, 255, ${0.3 * pulse})`;
+                    ctx.beginPath(); ctx.arc(bx, by, 32, 0, Math.PI * 2); ctx.fill();
+                    // Crystal base
+                    this._pxRect(ctx, bx - 4*s, by + 2*s, 8*s, 2*s, c2);
+                    // Main crystal body (diamond shape via stacked rects)
+                    this._pxRect(ctx, bx - 1*s, by + 2*s, 2*s, 1*s, c1);
+                    this._pxRect(ctx, bx - 2*s, by + 0*s, 4*s, 2*s, c1);
+                    this._pxRect(ctx, bx - 3*s, by - 3*s, 6*s, 3*s, c1);
+                    this._pxRect(ctx, bx - 2*s, by - 5*s, 4*s, 2*s, c1);
+                    this._pxRect(ctx, bx - 1*s, by - 6*s, 2*s, 1*s, hi);
+                    // Highlight facets
+                    this._pxRect(ctx, bx - 3*s, by - 2*s, 1*s, 2*s, hi);
+                    this._pxRect(ctx, bx - 2*s, by - 4*s, 1*s, 2*s, hi);
+                    // Sparkle particles
+                    const sparkles = [[3, -4], [-4, -1], [4, 2], [-3, -5]];
+                    sparkles.forEach(([sx, sy]) => {
+                        const flicker = Math.sin(this.gameTime * 5 + sx * sy) > 0.3;
+                        if (flicker) this._pxRect(ctx, bx + sx*s, by + sy*s, s, s, spark);
+                    });
+                } else if (name === 'Synthesizer') {
+                    // Red/orange reactor with spinning energy ring
+                    const c1 = '#ff4422', c2 = '#991100', hi = '#ff8844', core = '#ffcc00';
+                    ctx.fillStyle = `rgba(255, 68, 34, ${0.3 * pulse})`;
+                    ctx.beginPath(); ctx.arc(bx, by, 36, 0, Math.PI * 2); ctx.fill();
+                    // Reactor shell (octagon-ish via rects)
+                    this._pxRect(ctx, bx - 3*s, by - 5*s, 6*s, 10*s, c2);
+                    this._pxRect(ctx, bx - 5*s, by - 3*s, 10*s, 6*s, c2);
+                    this._pxRect(ctx, bx - 4*s, by - 4*s, 8*s, 8*s, c1);
+                    // Inner chamber
+                    this._pxRect(ctx, bx - 2*s, by - 2*s, 4*s, 4*s, '#220000');
+                    // Pulsing core
+                    const coreSize = Math.floor(1 + pulse * 2);
+                    ctx.fillStyle = core;
+                    ctx.fillRect(bx - coreSize*s/2, by - coreSize*s/2, coreSize*s, coreSize*s);
+                    // Highlight vents
+                    this._pxRect(ctx, bx - 4*s, by - 1*s, 1*s, 2*s, hi);
+                    this._pxRect(ctx, bx + 3*s, by - 1*s, 1*s, 2*s, hi);
+                    this._pxRect(ctx, bx - 1*s, by - 4*s, 2*s, 1*s, hi);
+                    this._pxRect(ctx, bx - 1*s, by + 3*s, 2*s, 1*s, hi);
+                    // Energy ring (rotating dots)
+                    const ringR = 5 * s;
+                    for (let a = 0; a < 8; a++) {
+                        const ang = this.gameTime * 2 + a * Math.PI / 4;
+                        const rx = bx + Math.cos(ang) * ringR;
+                        const ry = by + Math.sin(ang) * ringR;
+                        ctx.fillStyle = a % 2 === 0 ? '#ffcc00' : '#ff6600';
+                        ctx.fillRect(Math.floor(rx) - s/2, Math.floor(ry) - s/2, s, s);
+                    }
+                } else {
+                    // Fallback gold block
+                    ctx.fillStyle = '#ffd700';
+                    ctx.fillRect(bx - 12, by - 12, 24, 24);
+                    ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
+                    ctx.strokeRect(bx - 12, by - 12, 24, 24);
+                }
                 
-                // Main pixel block (16x16)
-                const blockSize = 24;
-                ctx.fillStyle = '#ffd700';
-                ctx.fillRect(
-                    Math.floor(x - blockSize/2),
-                    Math.floor(y - blockSize/2),
-                    blockSize,
-                    blockSize
-                );
-                
-                // Pixel border
-                ctx.strokeStyle = '#000';
-                ctx.lineWidth = 3;
-                ctx.strokeRect(
-                    Math.floor(x - blockSize/2),
-                    Math.floor(y - blockSize/2),
-                    blockSize,
-                    blockSize
-                );
-                
-                // Rate text (pixel font)
+                // Name label
                 ctx.fillStyle = '#fff';
-                ctx.font = 'bold 12px monospace';
+                ctx.font = 'bold 10px monospace';
                 ctx.textAlign = 'center';
-                ctx.fillText(`+${rate}`, Math.floor(x), Math.floor(y + 30));
+                ctx.fillText(name, bx, by + 32);
+                // Rate text
+                ctx.fillStyle = '#aaffaa';
+                ctx.font = 'bold 12px monospace';
+                ctx.fillText(`+${rate}/s`, bx, by + 44);
+            }
+            
+            _pxRect(ctx, x, y, w, h, color) {
+                ctx.fillStyle = color;
+                ctx.fillRect(Math.floor(x), Math.floor(y), Math.floor(w), Math.floor(h));
             }
             
             drawPixelConnection(x1, y1, x2, y2) {
