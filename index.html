@@ -2290,21 +2290,26 @@
                         } else if (type === 'bug') {
                             enemy.position.y = enemy.userData.originY + Math.sin(this.gameTime * enemy.userData.bounceSpeed + enemy.userData.phase) * enemy.userData.bounceAmp;
                         } else if (type === 'meeting') {
-                            const dx = this.player.position.x - enemy.position.x;
-                            const dy = this.player.position.y - enemy.position.y;
-                            const dz = this.player.position.z - enemy.position.z;
-                            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                            if (dist < 10 && dist > 0.1) {
-                                enemy.position.x += (dx / dist) * enemy.userData.speed * dt;
-                                enemy.position.y += (dy / dist) * enemy.userData.speed * dt;
-                                enemy.position.z += (dz / dist) * enemy.userData.speed * dt;
+                            // Only home toward player if not invincible
+                            if (!this.invincibleUntil || performance.now() > this.invincibleUntil) {
+                                const dx = this.player.position.x - enemy.position.x;
+                                const dy = this.player.position.y - enemy.position.y;
+                                const dz = this.player.position.z - enemy.position.z;
+                                const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                                if (dist < 10 && dist > 0.1) {
+                                    enemy.position.x += (dx / dist) * enemy.userData.speed * dt;
+                                    enemy.position.y += (dy / dist) * enemy.userData.speed * dt;
+                                    enemy.position.z += (dz / dist) * enemy.userData.speed * dt;
+                                }
                             }
                             enemy.rotation.y += dt;
                         }
-                        // Collision with player
-                        const enemyBox = new THREE.Box3().setFromObject(enemy);
-                        if (playerBox.intersectsBox(enemyBox)) {
-                            this.respawnPlayer();
+                        // Collision with player (skip if invincible)
+                        if (!this.invincibleUntil || performance.now() > this.invincibleUntil) {
+                            const enemyBox = new THREE.Box3().setFromObject(enemy);
+                            if (playerBox.intersectsBox(enemyBox)) {
+                                this.respawnPlayer();
+                            }
                         }
                     });
                 }
@@ -3656,7 +3661,36 @@
                 this.player.position.set(0, 2, 0);
                 this.playerVelocity = { x: 0, y: 0, z: 0 };
                 this.isGrounded = false;
-                console.log('Player respawned after falling');
+                // Invincibility frames — 1.5 seconds after respawn
+                this.invincibleUntil = performance.now() + 1500;
+                // Push all meeting enemies away from spawn point
+                if (this.enemies) {
+                    this.enemies.forEach(e => {
+                        if (e.userData.enemyType === 'meeting') {
+                            const dx = e.position.x;
+                            const dz = e.position.z;
+                            const dist = Math.sqrt(dx * dx + dz * dz) || 1;
+                            e.position.x = (dx / dist) * 8;
+                            e.position.z = (dz / dist) * 8;
+                        }
+                    });
+                }
+                // Flash player to show invincibility
+                if (this.player) {
+                    this.player.traverse(c => { if (c.material) c.material.transparent = true; });
+                    let flashes = 0;
+                    const flashInterval = setInterval(() => {
+                        if (!this.player) { clearInterval(flashInterval); return; }
+                        this.player.visible = !this.player.visible;
+                        flashes++;
+                        if (flashes >= 10) {
+                            clearInterval(flashInterval);
+                            this.player.visible = true;
+                            this.player.traverse(c => { if (c.material) c.material.transparent = false; });
+                        }
+                    }, 150);
+                }
+                console.log('Player respawned with invincibility');
             }
             
             playLiftAnimation() {
