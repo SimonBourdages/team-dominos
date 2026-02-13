@@ -673,13 +673,25 @@
                     if (this.state.phase === 3) this.handleCanvasClick(e);
                 });
                 
-                // Player position in 2D
-                this.player = { x: 10, y: 0, z: 10, vx: 0, vy: 0, vz: 0 };
+                // Player position in 2D (car)
+                this.player = { x: 10, y: 0, z: 10, vx: 0, vy: 0, vz: 0, angle: 0 };
+                
+                // Start with 1 AI worker
+                if (this.state.aiWorkers.length === 0) {
+                    this.state.aiWorkers.push({
+                        id: this.workerIdCounter++,
+                        x: 12,
+                        y: 0,
+                        z: 12,
+                        targetOKR: null
+                    });
+                }
                 
                 // Update UI
                 document.getElementById('controlsText').innerHTML = 
-                    'WASD - Move<br>Click - Hire/Manage';
+                    'WASD - Drive<br>Collect OKR coins<br>Hire more workers!';
                 document.getElementById('workers').style.display = 'block';
+                this.updateWorkerUI();
             }
             
             setupPhase3() {
@@ -1461,13 +1473,21 @@
             }
             
             updatePhase2(dt) {
-                const speed = 5;
+                const speed = 8;
                 
-                // Player movement
-                if (this.keys['KeyW']) this.player.z -= speed * dt;
-                if (this.keys['KeyS']) this.player.z += speed * dt;
-                if (this.keys['KeyA']) this.player.x -= speed * dt;
-                if (this.keys['KeyD']) this.player.x += speed * dt;
+                // Player car movement
+                let moveX = 0, moveZ = 0;
+                if (this.keys['KeyW']) moveZ -= 1;
+                if (this.keys['KeyS']) moveZ += 1;
+                if (this.keys['KeyA']) moveX -= 1;
+                if (this.keys['KeyD']) moveX += 1;
+                
+                if (moveX !== 0 || moveZ !== 0) {
+                    const len = Math.sqrt(moveX * moveX + moveZ * moveZ);
+                    this.player.x += (moveX / len) * speed * dt;
+                    this.player.z += (moveZ / len) * speed * dt;
+                    this.player.angle = Math.atan2(moveX, moveZ);
+                }
                 
                 // Keep in bounds
                 this.player.x = Math.max(0, Math.min(20, this.player.x));
@@ -1531,49 +1551,234 @@
             renderPhase2() {
                 const ctx = this.ctx;
                 const canvas = this.canvas;
+                if (!ctx) return;
                 
-                // Draw anime-style background
-                this.drawAnimeBackground();
+                // Anime gradient sky
+                const skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                skyGrad.addColorStop(0, '#87CEEB');
+                skyGrad.addColorStop(0.6, '#FFB6C1');
+                skyGrad.addColorStop(1, '#FFA07A');
+                ctx.fillStyle = skyGrad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
                 
-                // Center camera on player
+                // Clouds
+                ctx.fillStyle = 'rgba(255,255,255,0.85)';
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                for (let i = 0; i < 5; i++) {
+                    const cx = ((this.gameTime * 15 + i * 250) % (canvas.width + 200)) - 100;
+                    const cy = 40 + i * 60;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, 25, 0, Math.PI * 2);
+                    ctx.arc(cx + 20, cy, 30, 0, Math.PI * 2);
+                    ctx.arc(cx + 40, cy, 25, 0, Math.PI * 2);
+                    ctx.fill(); ctx.stroke();
+                }
+                
                 const offsetX = canvas.width / 2;
                 const offsetY = canvas.height / 2;
                 
-                // Draw platforms with anime outline
-                this.platforms.forEach(p => {
-                    const pos = this.toIso(p.x - this.player.x, p.y, p.z - this.player.z);
-                    this.drawAnimeTile(offsetX + pos.x, offsetY + pos.y, '#4a4a4a');
-                });
+                // Draw grass tiles (isometric grid)
+                for (let gx = -8; gx <= 8; gx++) {
+                    for (let gz = -8; gz <= 8; gz++) {
+                        const wx = Math.floor(this.player.x) + gx;
+                        const wz = Math.floor(this.player.z) + gz;
+                        const rx = wx - this.player.x;
+                        const rz = wz - this.player.z;
+                        const pos = this.toIso(rx, 0, rz);
+                        const sx = offsetX + pos.x;
+                        const sy = offsetY + pos.y;
+                        
+                        // Checkerboard grass
+                        const dark = (wx + wz) % 2 === 0;
+                        ctx.fillStyle = dark ? '#2d8a2d' : '#34a534';
+                        ctx.strokeStyle = '#1a6e1a';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(sx, sy);
+                        ctx.lineTo(sx + 32, sy + 16);
+                        ctx.lineTo(sx, sy + 32);
+                        ctx.lineTo(sx - 32, sy + 16);
+                        ctx.closePath();
+                        ctx.fill(); ctx.stroke();
+                    }
+                }
                 
-                // Draw OKRs with sparkles
+                // Draw OKR coins
                 this.okrs.forEach(okr => {
                     if (!okr.collected) {
                         const pos = this.toIso(okr.x - this.player.x, okr.y, okr.z - this.player.z);
-                        this.drawAnimeTile(offsetX + pos.x, offsetY + pos.y, '#ffd700');
-                        this.drawAnimeSparkles(offsetX + pos.x, offsetY + pos.y, this.gameTime);
+                        const cx = offsetX + pos.x;
+                        const cy = offsetY + pos.y - 10;
+                        const bounce = Math.sin(this.gameTime * 3 + okr.x) * 4;
+                        
+                        // Coin shadow
+                        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                        ctx.beginPath();
+                        ctx.ellipse(cx, cy + 20, 12, 6, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        // Gold coin
+                        ctx.fillStyle = '#ffd700';
+                        ctx.strokeStyle = '#b8860b';
+                        ctx.lineWidth = 3;
+                        ctx.beginPath();
+                        ctx.arc(cx, cy + bounce, 14, 0, Math.PI * 2);
+                        ctx.fill(); ctx.stroke();
+                        
+                        // Inner ring
+                        ctx.strokeStyle = '#daa520';
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.arc(cx, cy + bounce, 10, 0, Math.PI * 2);
+                        ctx.stroke();
+                        
+                        // OKR text
+                        ctx.fillStyle = '#b8860b';
+                        ctx.font = 'bold 9px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText('OKR', cx, cy + bounce);
+                        
+                        // Sparkle
+                        const sparkle = Math.sin(this.gameTime * 5 + okr.x * 2) * 0.5 + 0.5;
+                        ctx.fillStyle = `rgba(255,255,200,${sparkle})`;
+                        ctx.beginPath();
+                        ctx.arc(cx - 5, cy + bounce - 6, 2, 0, Math.PI * 2);
+                        ctx.fill();
                     }
                 });
                 
-                // Draw HQ
-                const hqPos = this.toIso(this.jrodHQ.x - this.player.x, this.jrodHQ.y, this.jrodHQ.z - this.player.z);
-                this.drawAnimeTile(offsetX + hqPos.x, offsetY + hqPos.y, '#00ffff');
-                this.drawAnimeTile(offsetX + hqPos.x, offsetY + hqPos.y + 16, '#00ffff');
-                
-                // Draw player character (anime style)
-                const charX = offsetX;
-                const charY = offsetY;
-                this.drawAnimeCharacter(charX, charY, this.keys);
-                
-                // Speed lines when moving
-                if (this.keys['w'] || this.keys['a'] || this.keys['s'] || this.keys['d']) {
-                    this.drawSpeedLines(charX, charY);
+                // Draw car lift goal
+                if (this.jrodHQ) {
+                    const hqPos = this.toIso(this.jrodHQ.x - this.player.x, 0, this.jrodHQ.z - this.player.z);
+                    const hx = offsetX + hqPos.x;
+                    const hy = offsetY + hqPos.y;
+                    
+                    // Base
+                    ctx.fillStyle = '#555';
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 2;
+                    ctx.fillRect(hx - 25, hy - 5, 50, 10);
+                    ctx.strokeRect(hx - 25, hy - 5, 50, 10);
+                    
+                    // Pillars
+                    ctx.fillStyle = '#888';
+                    ctx.fillRect(hx - 22, hy - 50, 6, 50);
+                    ctx.fillRect(hx + 16, hy - 50, 6, 50);
+                    ctx.strokeRect(hx - 22, hy - 50, 6, 50);
+                    ctx.strokeRect(hx + 16, hy - 50, 6, 50);
+                    
+                    // Yellow stripes
+                    ctx.fillStyle = '#ffcc00';
+                    for (let i = 0; i < 3; i++) {
+                        ctx.fillRect(hx - 20, hy - 10 - i * 15, 40, 4);
+                    }
+                    
+                    // Arrow
+                    const arrowBounce = Math.sin(this.gameTime * 2) * 5;
+                    ctx.fillStyle = '#00ff00';
+                    ctx.beginPath();
+                    ctx.moveTo(hx, hy - 55 + arrowBounce);
+                    ctx.lineTo(hx - 8, hy - 45 + arrowBounce);
+                    ctx.lineTo(hx + 8, hy - 45 + arrowBounce);
+                    ctx.fill();
                 }
                 
-                // Draw AI workers
+                // Draw AI workers (small robots)
                 this.state.aiWorkers.forEach(worker => {
-                    const wPos = this.toIso(worker.x - this.player.x, worker.y + 1, worker.z - this.player.z);
-                    this.drawAnimeWorker(offsetX + wPos.x, offsetY + wPos.y);
+                    const wPos = this.toIso(worker.x - this.player.x, 0, worker.z - this.player.z);
+                    const wx = offsetX + wPos.x;
+                    const wy = offsetY + wPos.y - 15;
+                    
+                    // Body
+                    ctx.fillStyle = '#6a6aff';
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 2;
+                    ctx.fillRect(wx - 8, wy - 10, 16, 20);
+                    ctx.strokeRect(wx - 8, wy - 10, 16, 20);
+                    
+                    // Head
+                    ctx.fillStyle = '#8888ff';
+                    ctx.beginPath();
+                    ctx.arc(wx, wy - 16, 8, 0, Math.PI * 2);
+                    ctx.fill(); ctx.stroke();
+                    
+                    // Eyes (LEDs)
+                    ctx.fillStyle = '#00ff00';
+                    ctx.fillRect(wx - 4, wy - 18, 3, 3);
+                    ctx.fillRect(wx + 1, wy - 18, 3, 3);
+                    
+                    // Antenna
+                    ctx.strokeStyle = '#888';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(wx, wy - 24);
+                    ctx.lineTo(wx, wy - 30);
+                    ctx.stroke();
+                    ctx.fillStyle = '#ff0000';
+                    ctx.beginPath();
+                    ctx.arc(wx, wy - 30, 2, 0, Math.PI * 2);
+                    ctx.fill();
                 });
+                
+                // Draw player car (top-down anime style)
+                const carAngle = this.player.angle || 0;
+                ctx.save();
+                ctx.translate(offsetX, offsetY - 15);
+                ctx.rotate(-carAngle);
+                
+                // Car shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                ctx.beginPath();
+                ctx.ellipse(0, 18, 20, 8, 0, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Car body
+                ctx.fillStyle = '#2266cc';
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.roundRect(-15, -22, 30, 44, 6);
+                ctx.fill(); ctx.stroke();
+                
+                // Windshield
+                ctx.fillStyle = '#88ccff';
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.roundRect(-10, -16, 20, 10, 3);
+                ctx.fill(); ctx.stroke();
+                
+                // Rear window
+                ctx.beginPath();
+                ctx.roundRect(-8, 10, 16, 8, 3);
+                ctx.fill(); ctx.stroke();
+                
+                // Headlights
+                ctx.fillStyle = '#ffffaa';
+                ctx.beginPath();
+                ctx.arc(-9, -20, 3, 0, Math.PI * 2);
+                ctx.arc(9, -20, 3, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Wheels
+                ctx.fillStyle = '#222';
+                ctx.fillRect(-17, -12, 5, 10);
+                ctx.fillRect(12, -12, 5, 10);
+                ctx.fillRect(-17, 6, 5, 10);
+                ctx.fillRect(12, 6, 5, 10);
+                
+                // Driver head
+                ctx.fillStyle = '#ffcc99';
+                ctx.beginPath();
+                ctx.arc(0, -2, 5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                
+                ctx.restore();
                 
                 // Draw spectators
                 this.drawAnimeSpectators();
