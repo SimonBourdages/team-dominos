@@ -648,7 +648,7 @@
             synthesizer: { name: 'Synthesizer', cost: 2000, acPerSec: 0,   okrPerSec: 100, elCost: 10, color: '#f44336', desc: '+100 OKR/s',     symbol: '⚛️' },
             generator:   { name: 'Generator',   cost: 75,   acPerSec: 0,   okrPerSec: 0,   elPerSec: 5, elCost: 0, color: '#ff9800', desc: '+5 EL/s',           symbol: '⚡' },
             bank:        { name: 'Bank',         cost: 300,  acPerSec: 0,   okrPerSec: 0,   elCost: 0,   color: '#ffd700', desc: '2% AC interest + carryover', symbol: '🏦', interestRate: 0.02 },
-            repairbot:   { name: 'Repair Bot',  cost: 200,  acPerSec: 0,   okrPerSec: 0,   elCost: 2,  color: '#00e5ff', desc: 'Heals branch 15 HP/s', symbol: '🔧', repairRate: 15 }
+            repairbot:   { name: 'Repair Bot',  cost: 200,  acPerSec: 0,   okrPerSec: 0,   elCost: 2,  color: '#00e5ff', desc: 'Flying bot, heals lowest HP', symbol: '🔧', repairRate: 15 }
         };
 
         var ACHIEVEMENTS = {
@@ -1397,6 +1397,12 @@
                 return;
             }
 
+            // Don't place in spectator zone (bottom 80px)
+            if (y > this.canvas.height - 80) {
+                this.addFloatingText(x, y - 20, 'Team area!', '#f84');
+                return;
+            }
+
             this.placeBuilding(x, y);
         };
 
@@ -1664,32 +1670,66 @@
                 }
             }
 
-            // Repair bots heal buildings on their MST branch
-            var repairEdges = this.computeConnectionEdges();
+            // Repair bots — fly to lowest-HP building and repair it
             for (var i = 0; i < this.nodes.length; i++) {
                 var rn = this.nodes[i];
                 if (rn.type !== 'repairbot' || rn.hp <= 0) continue;
                 var repairAmt = BUILDINGS.repairbot.repairRate * UPGRADE_POWER[rn.level || 1] * dt;
-                var branchNodes = [];
-                for (var e = 0; e < repairEdges.length; e++) {
-                    if (repairEdges[e].from.idx === i) branchNodes.push(repairEdges[e].to.idx);
-                    if (repairEdges[e].to.idx === i) branchNodes.push(repairEdges[e].from.idx);
+
+                // Initialize bot flight position if not set
+                if (rn.botX === undefined) { rn.botX = rn.x; rn.botY = rn.y; }
+
+                // Find lowest-HP building that isn't this repair bot
+                var lowestIdx = -1;
+                var lowestHp = Infinity;
+                for (var j = 0; j < this.nodes.length; j++) {
+                    if (j === i) continue;
+                    var nd = this.nodes[j];
+                    var hp = nd.hp !== undefined ? nd.hp : 100;
+                    var maxHp = nd.maxHp || 100;
+                    if (hp < maxHp && hp < lowestHp) {
+                        lowestHp = hp;
+                        lowestIdx = j;
+                    }
                 }
-                for (var b = 0; b < branchNodes.length; b++) {
-                    var bi = branchNodes[b];
-                    if (bi >= 0 && bi < this.nodes.length) {
-                        var target = this.nodes[bi];
-                        if (target.hp < (target.maxHp || 100)) {
-                            target.hp = Math.min(target.maxHp || 100, target.hp + repairAmt);
-                            if (Math.random() < dt * 2) {
-                                this.addFloatingText(target.x, target.y - 20, '+heal', '#0ff', 9);
-                            }
+
+                if (lowestIdx >= 0) {
+                    var target = this.nodes[lowestIdx];
+                    rn.repairTarget = lowestIdx;
+                    // Fly toward target
+                    var rdx = target.x - rn.botX;
+                    var rdy = target.y - rn.botY;
+                    var rdist = Math.sqrt(rdx * rdx + rdy * rdy);
+                    var flySpeed = 120 + (rn.level || 1) * 40;
+
+                    if (rdist > 15) {
+                        // Move toward target
+                        rn.botX += (rdx / rdist) * flySpeed * dt;
+                        rn.botY += (rdy / rdist) * flySpeed * dt;
+                        rn.repairing = false;
+                    } else {
+                        // At target — repair!
+                        rn.repairing = true;
+                        target.hp = Math.min(target.maxHp || 100, target.hp + repairAmt);
+                        if (Math.random() < dt * 3) {
+                            this.addFloatingText(target.x + (Math.random() - 0.5) * 10, target.y - 25, '+' + Math.floor(repairAmt) + ' HP', '#0ff', 10);
                         }
+                    }
+                } else {
+                    // No damaged buildings — return to home base
+                    rn.repairTarget = -1;
+                    rn.repairing = false;
+                    var hdx = rn.x - rn.botX;
+                    var hdy = rn.y - rn.botY;
+                    var hdist = Math.sqrt(hdx * hdx + hdy * hdy);
+                    if (hdist > 5) {
+                        rn.botX += (hdx / hdist) * 100 * dt;
+                        rn.botY += (hdy / hdist) * 100 * dt;
                     }
                 }
             }
 
-            // Thief ships — spawn after 50% OKR goal, home toward factory and steal OKRs
+            // Thief ships — visible attack runs on OKR factory
             var lv = LEVELS[this.state.currentLevel];
             var past50 = this.state.okrsCollected >= lv.okrGoal * 0.5;
             var fX = this.canvas.width / 2;
@@ -1698,7 +1738,7 @@
             if (past50) {
                 this.thiefSpawnTimer += dt;
                 var maxThieves = Math.min(8, 1 + Math.floor(this.state.currentLevel / 3));
-                if (this.thiefShips.length < maxThieves && this.thiefSpawnTimer > 3) {
+                if (this.thiefShips.length < maxThieves && this.thiefSpawnTimer > 4) {
                     this.thiefSpawnTimer = 0;
                     this.spawnThiefShip();
                 }
@@ -1707,8 +1747,6 @@
             for (var i = this.thiefShips.length - 1; i >= 0; i--) {
                 var thief = this.thiefShips[i];
                 thief.age += dt;
-                thief.trail.push({ x: thief.x, y: thief.y });
-                if (thief.trail.length > 12) thief.trail.shift();
 
                 if (thief.exploding) {
                     thief.explodeTimer -= dt;
@@ -1718,36 +1756,63 @@
                     continue;
                 }
 
-                // Home toward factory
                 var tdx = fX - thief.x;
                 var tdy = fY - thief.y;
                 var tdist = Math.sqrt(tdx * tdx + tdy * tdy);
+                var tspeed = 80 + this.state.currentLevel * 8;
 
-                if (tdist > 40) {
-                    // Approach
-                    var tspeed = 50 + this.state.currentLevel * 5;
-                    thief.x += (tdx / tdist) * tspeed * dt;
-                    thief.y += (tdy / tdist) * tspeed * dt;
-                    thief.x += Math.sin(thief.age * 2 + thief.wobble) * 10 * dt;
-                    thief.stealing = false;
-                } else {
-                    // At factory — steal OKRs!
-                    thief.stealing = true;
-                    var stealAmt = (5 + this.state.currentLevel * 2) * dt;
+                if (thief.phase === 'approaching') {
+                    // Fly toward factory
+                    if (tdist > 50) {
+                        thief.x += (tdx / tdist) * tspeed * dt;
+                        thief.y += (tdy / tdist) * tspeed * dt;
+                    } else {
+                        thief.phase = 'stealing';
+                        thief.stealTimer = 2.5;
+                        thief.stolen = 0;
+                    }
+                } else if (thief.phase === 'stealing') {
+                    // Orbit factory and steal
+                    thief.orbitAngle = (thief.orbitAngle || 0) + dt * 1.2;
+                    thief.x = fX + Math.cos(thief.orbitAngle) * 45;
+                    thief.y = fY + Math.sin(thief.orbitAngle) * 45;
+                    var stealAmt = (8 + this.state.currentLevel * 3) * dt;
                     this.state.okrsCollected = Math.max(0, this.state.okrsCollected - stealAmt);
-                    this.state.totalOKRs = Math.max(0, this.state.totalOKRs - stealAmt * 0.5);
-                    // Orbit around factory while stealing
-                    thief.orbitAngle = (thief.orbitAngle || 0) + dt * 1.5;
-                    thief.x = fX + Math.cos(thief.orbitAngle) * 35;
-                    thief.y = fY + Math.sin(thief.orbitAngle) * 35;
-
+                    this.state.totalOKRs = Math.max(0, this.state.totalOKRs - stealAmt * 0.3);
+                    thief.stolen += stealAmt;
+                    thief.stealing = true;
+                    thief.stealTimer -= dt;
                     if (Math.random() < dt * 2) {
-                        this.addFloatingText(fX + (Math.random() - 0.5) * 40, fY - 40, '-OKR stolen!', '#f0f', 11);
+                        this.addFloatingText(fX + (Math.random() - 0.5) * 50, fY - 50, '-' + Math.floor(stealAmt) + ' OKR!', '#f0f', 12);
+                    }
+                    if (thief.stealTimer <= 0) {
+                        thief.phase = 'fleeing';
+                        thief.stealing = false;
+                        this.addFloatingText(thief.x, thief.y - 20, 'Stole ' + this.formatNumber(Math.floor(thief.stolen)) + ' OKRs!', '#f44', 14);
+                    }
+                } else if (thief.phase === 'fleeing') {
+                    // Fly back to spawn edge
+                    var edx = thief.spawnX - thief.x;
+                    var edy = thief.spawnY - thief.y;
+                    var edist = Math.sqrt(edx * edx + edy * edy);
+                    if (edist > 10) {
+                        thief.x += (edx / edist) * tspeed * 1.3 * dt;
+                        thief.y += (edy / edist) * tspeed * 1.3 * dt;
+                    } else {
+                        thief.phase = 'returning';
+                        thief.returnTimer = 1.5;
+                    }
+                } else if (thief.phase === 'returning') {
+                    // Wait off screen then approach again
+                    thief.returnTimer -= dt;
+                    if (thief.returnTimer <= 0) {
+                        thief.phase = 'approaching';
                     }
                 }
 
-                // Thief ships can be destroyed by clicking on them
-                // (handled in onCanvasClick)
+                // Update trail
+                thief.trail.push({ x: thief.x, y: thief.y });
+                if (thief.trail.length > 15) thief.trail.shift();
             }
 
             // Screen shake decay
@@ -1840,11 +1905,20 @@
             var h = this.canvas.height;
             var side = Math.floor(Math.random() * 4);
             var x, y;
-            if (side === 0) { x = -20; y = Math.random() * h; }
-            else if (side === 1) { x = w + 20; y = Math.random() * h; }
-            else if (side === 2) { x = Math.random() * w; y = -20; }
-            else { x = Math.random() * w; y = h + 20; }
-            this.thiefShips.push({ x: x, y: y, age: 0, wobble: Math.random() * 10, trail: [], stealing: false, orbitAngle: Math.random() * Math.PI * 2, exploding: false, explodeTimer: 0 });
+            if (side === 0) { x = -30; y = Math.random() * h; }
+            else if (side === 1) { x = w + 30; y = Math.random() * h; }
+            else if (side === 2) { x = Math.random() * w; y = -30; }
+            else { x = Math.random() * w; y = h + 30; }
+            this.thiefShips.push({
+                x: x, y: y,
+                spawnX: x, spawnY: y,
+                age: 0, wobble: Math.random() * 10,
+                trail: [], stealing: false,
+                orbitAngle: Math.random() * Math.PI * 2,
+                exploding: false, explodeTimer: 0,
+                phase: 'approaching',
+                stealTimer: 0, stolen: 0, returnTimer: 0
+            });
         };
 
         // =========================================================
@@ -2099,6 +2173,9 @@
             // Effects
             this.drawParticles(ctx);
             this.drawShips(ctx);
+            // Draw repair bot drones
+            this.drawRepairDrones(ctx);
+            this.drawThiefShips(ctx);
             this.drawPixelSpectators(ctx, w, h);
             this.drawComboDisplay(ctx, w, h);
             this.drawFloatingTexts(ctx);
@@ -2151,7 +2228,7 @@
                 lines.push({ text: 'Carryover: 10% AC on level up', color: '#ffd700' });
             }
             var nodeRepair = bt.repairRate ? bt.repairRate * lvlMult : 0;
-            if (nodeRepair > 0) lines.push({ text: 'Repairs: ' + nodeRepair.toFixed(1) + ' HP/s (branch)', color: '#0ff' });
+            if (nodeRepair > 0) lines.push({ text: 'Repairs: ' + nodeRepair.toFixed(1) + ' HP/s (flies to lowest)', color: '#0ff' });
             var hpVal = node.hp !== undefined ? node.hp : 100;
             var maxHpVal = node.maxHp || 100;
             lines.push({ text: 'HP: ' + Math.floor(hpVal) + '/' + maxHpVal, color: hpVal >= maxHpVal ? '#4caf50' : hpVal > 30 ? '#ff9800' : '#f44336' });
@@ -2319,6 +2396,227 @@
             }
         };
 
+        OKRFarmingGame.prototype.drawRepairDrones = function(ctx) {
+            for (var i = 0; i < this.nodes.length; i++) {
+                var rn = this.nodes[i];
+                if (rn.type !== 'repairbot' || rn.hp <= 0) continue;
+                if (rn.botX === undefined) continue;
+                
+                var bx = rn.botX;
+                var by = rn.botY;
+                var lvl = rn.level || 1;
+                var ds = 3 + lvl; // drone size
+                var age = rn.age || 0;
+                
+                // Tether line from home to drone
+                ctx.save();
+                ctx.strokeStyle = 'rgba(0, 229, 255, 0.15)';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([3, 5]);
+                ctx.beginPath();
+                ctx.moveTo(rn.x, rn.y);
+                ctx.lineTo(bx, by);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.restore();
+                
+                // Repair beam to target
+                if (rn.repairing && rn.repairTarget >= 0 && rn.repairTarget < this.nodes.length) {
+                    var tgt = this.nodes[rn.repairTarget];
+                    ctx.save();
+                    ctx.strokeStyle = 'rgba(0, 255, 255, ' + (0.3 + Math.sin(age * 8) * 0.2).toFixed(2) + ')';
+                    ctx.lineWidth = 2;
+                    ctx.shadowColor = '#0ff';
+                    ctx.shadowBlur = 8;
+                    ctx.beginPath();
+                    ctx.moveTo(bx, by);
+                    ctx.lineTo(tgt.x, tgt.y);
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+                    ctx.restore();
+                    
+                    // Repair sparkles at target
+                    if (Math.random() < 0.15) {
+                        ctx.fillStyle = '#0ff';
+                        ctx.fillRect(tgt.x + (Math.random() - 0.5) * 12, tgt.y + (Math.random() - 0.5) * 12, 2, 2);
+                    }
+                }
+                
+                // Thruster glow
+                ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
+                ctx.beginPath();
+                ctx.arc(bx, by + ds + 2, ds * 0.6, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Drone body — rotating diamond
+                ctx.save();
+                ctx.translate(bx, by);
+                ctx.rotate(age * 2);
+                
+                // Outer diamond
+                ctx.fillStyle = lvl >= 3 ? '#ffd700' : lvl >= 2 ? '#00e5ff' : '#00acc1';
+                ctx.beginPath();
+                ctx.moveTo(0, -ds);
+                ctx.lineTo(ds, 0);
+                ctx.lineTo(0, ds);
+                ctx.lineTo(-ds, 0);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Inner core
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(0, 0, ds * 0.3, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.restore();
+                
+                // Level indicator
+                if (lvl >= 2) {
+                    ctx.fillStyle = lvl === 3 ? '#ffd700' : '#0ff';
+                    ctx.font = 'bold 8px Segoe UI';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Lv.' + lvl, bx, by - ds - 4);
+                }
+                
+                // Status label
+                ctx.fillStyle = rn.repairing ? '#0f0' : '#888';
+                ctx.font = '7px Segoe UI';
+                ctx.textAlign = 'center';
+                ctx.fillText(rn.repairing ? 'REPAIRING' : 'SEEKING', bx, by + ds + 12);
+            }
+        };
+
+        OKRFarmingGame.prototype.drawThiefShips = function(ctx) {
+            var fX = this.canvas.width / 2;
+            var fY = this.canvas.height / 2;
+
+            for (var i = 0; i < this.thiefShips.length; i++) {
+                var thief = this.thiefShips[i];
+
+                if (thief.exploding) {
+                    // Explosion — bigger and more purple
+                    var t = 1 - (thief.explodeTimer / 0.5);
+                    var radius = 8 + t * 35;
+                    var alpha = 1 - t;
+                    ctx.save();
+                    ctx.globalAlpha = alpha * 0.7;
+                    ctx.fillStyle = '#ff00ff';
+                    ctx.beginPath(); ctx.arc(thief.x, thief.y, radius, 0, Math.PI * 2); ctx.fill();
+                    ctx.globalAlpha = alpha;
+                    ctx.fillStyle = '#ffcc00';
+                    ctx.beginPath(); ctx.arc(thief.x, thief.y, radius * 0.4, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#fff';
+                    ctx.beginPath(); ctx.arc(thief.x, thief.y, radius * 0.15, 0, Math.PI * 2); ctx.fill();
+                    ctx.restore();
+                    continue;
+                }
+
+                if (thief.phase === 'returning') continue; // invisible when off screen waiting
+
+                // Tractor beam when stealing
+                if (thief.stealing) {
+                    ctx.save();
+                    ctx.strokeStyle = 'rgba(255, 0, 255, ' + (0.2 + Math.sin(thief.age * 6) * 0.15).toFixed(2) + ')';
+                    ctx.lineWidth = 4 + Math.sin(thief.age * 10) * 2;
+                    ctx.shadowColor = '#f0f';
+                    ctx.shadowBlur = 10;
+                    ctx.beginPath();
+                    ctx.moveTo(thief.x, thief.y);
+                    ctx.lineTo(fX, fY);
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+                    ctx.restore();
+                    
+                    // Stolen OKR particles flowing along beam
+                    for (var p = 0; p < 3; p++) {
+                        var pt = ((thief.age * 2 + p * 0.33) % 1);
+                        var px = fX + (thief.x - fX) * pt;
+                        var py = fY + (thief.y - fY) * pt;
+                        ctx.fillStyle = 'rgba(255, 200, 0, ' + (0.8 - pt * 0.6).toFixed(2) + ')';
+                        ctx.beginPath();
+                        ctx.arc(px, py, 3, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+
+                // Trail — purple
+                for (var t = 0; t < thief.trail.length; t++) {
+                    var tp = thief.trail[t];
+                    var ta = (t / thief.trail.length) * 0.5;
+                    ctx.fillStyle = 'rgba(200, 0, 255, ' + ta.toFixed(2) + ')';
+                    var ts = 3 - (t / thief.trail.length) * 2;
+                    ctx.fillRect(Math.floor(tp.x) - ts, Math.floor(tp.y) - ts, ts * 2, ts * 2);
+                }
+
+                // Ship body — larger red/purple craft
+                var angle = Math.atan2(
+                    thief.phase === 'approaching' ? fY - thief.y : thief.spawnY - thief.y,
+                    thief.phase === 'approaching' ? fX - thief.x : thief.spawnX - thief.x
+                );
+                if (thief.stealing) angle = thief.orbitAngle + Math.PI / 2;
+
+                ctx.save();
+                ctx.translate(thief.x, thief.y);
+                ctx.rotate(angle);
+
+                // Main hull (larger)
+                ctx.fillStyle = '#c00';
+                ctx.beginPath();
+                ctx.moveTo(14, 0);
+                ctx.lineTo(-8, -7);
+                ctx.lineTo(-4, 0);
+                ctx.lineTo(-8, 7);
+                ctx.closePath();
+                ctx.fill();
+
+                // Wings
+                ctx.fillStyle = '#800';
+                ctx.beginPath();
+                ctx.moveTo(-2, -7);
+                ctx.lineTo(-8, -12);
+                ctx.lineTo(-6, -5);
+                ctx.closePath();
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(-2, 7);
+                ctx.lineTo(-8, 12);
+                ctx.lineTo(-6, 5);
+                ctx.closePath();
+                ctx.fill();
+
+                // Cockpit
+                ctx.fillStyle = '#f0f';
+                ctx.fillRect(4, -2, 5, 4);
+
+                // Engine
+                ctx.fillStyle = 'rgba(200, 0, 255, 0.8)';
+                ctx.fillRect(-10, -3, 4, 6);
+
+                // Skull icon (tiny)
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 8px Segoe UI';
+                ctx.textAlign = 'center';
+                ctx.fillText('☠', 0, 3);
+
+                ctx.restore();
+
+                // "THIEF" label
+                ctx.fillStyle = '#f0f';
+                ctx.font = 'bold 9px Segoe UI';
+                ctx.textAlign = 'center';
+                ctx.fillText('THIEF', thief.x, thief.y + 18);
+
+                // Warning glow
+                ctx.save();
+                ctx.fillStyle = 'rgba(255, 0, 100, ' + (0.05 + Math.sin(thief.age * 4) * 0.05).toFixed(3) + ')';
+                ctx.beginPath();
+                ctx.arc(thief.x, thief.y, 25, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        };
+
         // =========================================================
         // DRAWING - PLACEMENT GHOST PREVIEW
         // =========================================================
@@ -2345,10 +2643,11 @@
 
             var distToFactory = Math.sqrt((mx - factoryX) * (mx - factoryX) + (my - factoryY) * (my - factoryY));
             var tooCloseToFactory = distToFactory < 60;
+            var inTeamZone = my > this.canvas.height - 80;
             var canAfford = this.state.currencies.ac >= b.cost;
 
             var ringColor, ghostAlpha;
-            if (tooCloseToFactory) {
+            if (tooCloseToFactory || inTeamZone) {
                 ringColor = 'rgba(255, 60, 60, 0.5)';
                 ghostAlpha = 0.2;
             } else if (!canAfford) {
@@ -2402,6 +2701,9 @@
             if (tooCloseToFactory) {
                 ctx.fillStyle = '#f66';
                 ctx.fillText('Too close to factory!', mx, my + 35);
+            } else if (inTeamZone) {
+                ctx.fillStyle = '#f66';
+                ctx.fillText('Team area!', mx, my + 35);
             } else if (!canAfford) {
                 ctx.fillStyle = '#f66';
                 ctx.fillText('Need ' + b.cost + ' AC', mx, my + 35);
@@ -3630,7 +3932,7 @@
             var showCount = Math.min(baseMemberCount + bonusMembers, ALL_TEAM_MEMBERS.length);
             var specs = ALL_TEAM_MEMBERS.slice(0, showCount);
 
-            var baseY = h - 30;
+            var baseY = h - 45;
             var spacing = Math.min(60, (w - 100) / Math.max(specs.length, 1));
             var totalWidth = (specs.length - 1) * spacing;
             var startX = (w - totalWidth) / 2;
@@ -3638,8 +3940,8 @@
             for (var i = 0; i < specs.length; i++) {
                 var sp = specs[i];
                 var sx = startX + i * spacing;
-                var s = 2;
-                var bob = Math.sin(Date.now() * 0.002 + i * 1.5) * 2;
+                var s = 3;
+                var bob = Math.sin(Date.now() * 0.002 + i * 1.5) * 3;
 
                 // New arrivals bounce in (if recently appeared)
                 var isNew = i >= baseMemberCount;
