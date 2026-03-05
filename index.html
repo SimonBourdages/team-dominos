@@ -187,6 +187,19 @@
             font-size: 11px;
         }
 
+        .building-btn .b-preview {
+            color: #0ff;
+            font-size: 10px;
+            margin-top: 4px;
+            min-height: 26px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .building-btn:hover .b-preview {
+            opacity: 1;
+        }
+
         #menu {
             position: fixed;
             top: 0;
@@ -600,12 +613,25 @@
         // =========================================================
 
         var LEVELS = {
-            1: { okrGoal: 100,     reward: 100,  currency: 'ac', description: 'First conveyor' },
-            2: { okrGoal: 500,     reward: 200,  currency: 'ac', description: 'Network topology' },
-            3: { okrGoal: 10000,   reward: 500,  currency: 'ac', description: 'Exponential growth' },
-            4: { okrGoal: 100000,  reward: 1000, currency: 'ac', description: 'Singularity' },
-            5: { okrGoal: 1000000, reward: 0,    currency: 'ac', description: 'FINAL: Digital Transformation', final: true }
+            1:  { okrGoal: 100,      reward: 100,   currency: 'ac', description: 'First conveyor' },
+            2:  { okrGoal: 500,      reward: 200,   currency: 'ac', description: 'Network topology' },
+            3:  { okrGoal: 2000,     reward: 400,   currency: 'ac', description: 'Supply chain' },
+            4:  { okrGoal: 5000,     reward: 600,   currency: 'ac', description: 'Pipeline expansion' },
+            5:  { okrGoal: 15000,    reward: 900,   currency: 'ac', description: 'Data warehouse' },
+            6:  { okrGoal: 40000,    reward: 1200,  currency: 'ac', description: 'Neural network' },
+            7:  { okrGoal: 100000,   reward: 1800,  currency: 'ac', description: 'Quantum bridge' },
+            8:  { okrGoal: 250000,   reward: 2500,  currency: 'ac', description: 'Orbital relay' },
+            9:  { okrGoal: 600000,   reward: 3500,  currency: 'ac', description: 'Dyson collector' },
+            10: { okrGoal: 1500000,  reward: 5000,  currency: 'ac', description: 'Galaxy mesh' },
+            11: { okrGoal: 4000000,  reward: 7500,  currency: 'ac', description: 'Dark matter tap' },
+            12: { okrGoal: 10000000, reward: 10000, currency: 'ac', description: 'Multiverse sync' },
+            13: { okrGoal: 30000000, reward: 15000, currency: 'ac', description: 'Singularity core' },
+            14: { okrGoal: 100000000,reward: 25000, currency: 'ac', description: 'Omega protocol' },
+            15: { okrGoal: 1000000000,reward: 0,    currency: 'ac', description: 'FINAL: Digital Transcendence', final: true }
         };
+
+        var UPGRADE_COSTS = { 1: 1.0, 2: 2.5, 3: 6.0 }; // multiplier on base cost
+        var UPGRADE_POWER = { 1: 1.0, 2: 2.0, 3: 4.5 }; // multiplier on output
 
         var BUILDINGS = {
             collector:   { name: 'Collector',   cost: 50,   acPerSec: 2,   okrPerSec: 0,   color: '#4caf50', desc: '+2 AC/s',        symbol: '📥' },
@@ -617,43 +643,88 @@
         var ACHIEVEMENTS = {
             'first-okr':    { icon: '🪙', name: 'First Pickup',       desc: 'Collect your first OKR' },
             'level-1':      { icon: '🎓', name: 'Graduate',            desc: 'Complete Level 1' },
-            'level-5':      { icon: '👑', name: 'Digital Transformer', desc: 'Complete the final level' },
+            'level-5':      { icon: '📋', name: 'Pipeline Pro',        desc: 'Complete Level 5' },
+            'level-10':     { icon: '🌌', name: 'Galaxy Brain',        desc: 'Complete Level 10' },
+            'level-15':     { icon: '👑', name: 'Digital Transcender', desc: 'Complete the final level' },
             'build-first':  { icon: '🏗️', name: 'Architect',           desc: 'Place your first automation building' },
             'multiplier':   { icon: '✖️', name: 'Force Multiplier',    desc: 'Place a Multiplier building' },
             'collector-50': { icon: '🏦', name: 'OKR Mogul',           desc: 'Collect 50 total OKRs' },
-            'speed-demon':  { icon: '⚡', name: 'Speed Demon',          desc: 'Complete any level in under 15 seconds' }
+            'speed-demon':  { icon: '⚡', name: 'Speed Demon',          desc: 'Complete any level in under 15 seconds' },
+            'nodes-10':     { icon: '🏭', name: 'Industrialist',       desc: 'Place 10 buildings' },
+            'nodes-50':     { icon: '🌐', name: 'Megacorp',            desc: 'Place 50 buildings' },
+            'upgrade-3':    { icon: '⬆️', name: 'Maxed Out',           desc: 'Upgrade a building to level 3' }
         };
 
         var BG_FILTERS = {
-            1: 'brightness(0.25) saturate(1.2) hue-rotate(0deg)',
-            2: 'brightness(0.24) saturate(1.35) hue-rotate(30deg)',
-            3: 'brightness(0.23) saturate(1.45) hue-rotate(75deg)',
-            4: 'brightness(0.22) saturate(1.55) hue-rotate(150deg)',
-            5: 'brightness(0.21) saturate(1.70) hue-rotate(220deg)'
+            1:  'brightness(0.25) saturate(1.2) hue-rotate(0deg)',
+            2:  'brightness(0.24) saturate(1.25) hue-rotate(20deg)',
+            3:  'brightness(0.24) saturate(1.3) hue-rotate(40deg)',
+            4:  'brightness(0.23) saturate(1.35) hue-rotate(60deg)',
+            5:  'brightness(0.23) saturate(1.4) hue-rotate(80deg)',
+            6:  'brightness(0.22) saturate(1.4) hue-rotate(100deg)',
+            7:  'brightness(0.22) saturate(1.45) hue-rotate(120deg)',
+            8:  'brightness(0.21) saturate(1.45) hue-rotate(145deg)',
+            9:  'brightness(0.21) saturate(1.5) hue-rotate(170deg)',
+            10: 'brightness(0.20) saturate(1.5) hue-rotate(195deg)',
+            11: 'brightness(0.20) saturate(1.55) hue-rotate(220deg)',
+            12: 'brightness(0.19) saturate(1.6) hue-rotate(245deg)',
+            13: 'brightness(0.19) saturate(1.65) hue-rotate(270deg)',
+            14: 'brightness(0.18) saturate(1.7) hue-rotate(300deg)',
+            15: 'brightness(0.18) saturate(1.8) hue-rotate(330deg)'
         };
 
         var BG_OVERLAYS = {
-            1: 'rgba(0, 20, 40, 0.35)',
-            2: 'rgba(15, 0, 45, 0.35)',
-            3: 'rgba(0, 35, 25, 0.35)',
-            4: 'rgba(35, 15, 0, 0.35)',
-            5: 'rgba(25, 0, 0, 0.45)'
+            1:  'rgba(0, 20, 40, 0.35)',
+            2:  'rgba(5, 10, 45, 0.35)',
+            3:  'rgba(10, 0, 50, 0.35)',
+            4:  'rgba(0, 30, 30, 0.35)',
+            5:  'rgba(0, 35, 15, 0.35)',
+            6:  'rgba(10, 35, 0, 0.35)',
+            7:  'rgba(25, 30, 0, 0.35)',
+            8:  'rgba(35, 20, 0, 0.35)',
+            9:  'rgba(40, 10, 0, 0.35)',
+            10: 'rgba(35, 0, 10, 0.38)',
+            11: 'rgba(30, 0, 25, 0.38)',
+            12: 'rgba(20, 0, 35, 0.40)',
+            13: 'rgba(10, 0, 40, 0.40)',
+            14: 'rgba(5, 5, 45, 0.42)',
+            15: 'rgba(15, 0, 15, 0.45)'
         };
 
         var MUSIC_CONFIGS = {
-            1: { scale: [72, 74, 76, 79, 81], tempo: 90,  wave: 'square',   bass: [48, 48, 52, 55], mood: 'retro' },
-            2: { scale: [74, 76, 78, 81, 83], tempo: 95,  wave: 'square',   bass: [50, 50, 53, 57], mood: 'retro' },
-            3: { scale: [67, 69, 71, 74, 76], tempo: 100, wave: 'square',   bass: [55, 55, 59, 62], mood: 'building' },
-            4: { scale: [60, 64, 67, 69, 72], tempo: 105, wave: 'square',   bass: [48, 52, 55, 48], mood: 'epic' },
-            5: { scale: [60, 63, 65, 67, 70, 72, 74, 75], tempo: 160, wave: 'sawtooth', bass: [48, 51, 55, 48], mood: 'final' }
+            1:  { scale: [72, 74, 76, 79, 81], tempo: 90,  wave: 'square',   bass: [48, 48, 52, 55] },
+            2:  { scale: [74, 76, 78, 81, 83], tempo: 92,  wave: 'square',   bass: [50, 50, 53, 57] },
+            3:  { scale: [67, 69, 71, 74, 76], tempo: 95,  wave: 'square',   bass: [55, 55, 59, 62] },
+            4:  { scale: [69, 71, 73, 76, 78], tempo: 98,  wave: 'square',   bass: [57, 57, 60, 64] },
+            5:  { scale: [64, 67, 69, 71, 74], tempo: 100, wave: 'square',   bass: [52, 55, 52, 59] },
+            6:  { scale: [60, 64, 67, 69, 72], tempo: 105, wave: 'triangle', bass: [48, 52, 55, 48] },
+            7:  { scale: [62, 65, 67, 69, 72], tempo: 108, wave: 'triangle', bass: [50, 53, 50, 57] },
+            8:  { scale: [65, 67, 69, 72, 74], tempo: 112, wave: 'triangle', bass: [53, 53, 57, 60] },
+            9:  { scale: [67, 69, 71, 74, 76], tempo: 118, wave: 'triangle', bass: [55, 55, 59, 62] },
+            10: { scale: [60, 63, 65, 67, 70], tempo: 125, wave: 'sawtooth', bass: [48, 51, 48, 55] },
+            11: { scale: [62, 65, 67, 70, 72], tempo: 130, wave: 'sawtooth', bass: [50, 53, 50, 57] },
+            12: { scale: [64, 67, 69, 72, 74], tempo: 138, wave: 'sawtooth', bass: [52, 55, 52, 59] },
+            13: { scale: [60, 63, 67, 70, 72], tempo: 145, wave: 'sawtooth', bass: [48, 51, 55, 48] },
+            14: { scale: [60, 64, 67, 71, 74], tempo: 152, wave: 'sawtooth', bass: [48, 52, 55, 60] },
+            15: { scale: [60, 63, 65, 67, 70, 72, 74, 75], tempo: 165, wave: 'sawtooth', bass: [48, 51, 55, 48] }
         };
 
         var SPECTATOR_CONFIGS = {
-            1: [{ name: 'Josh',      color: '#00bcd4', quote: 'Build it!' }],
-            2: [{ name: 'James',     color: '#9c27b0', quote: 'Connect!' }],
-            3: [{ name: 'Yanan',     color: '#ff9800' }, { name: 'Lauren G.', color: '#4caf50' }],
-            4: [{ name: 'ALL 20',    color: '#00ffff', quote: 'Almost there!' }],
-            5: [{ name: 'Jrod',      color: '#ffd700', quote: 'Choose wisely...' }]
+            1:  [{ name: 'Josh',      color: '#00bcd4', quote: 'Build it!' }],
+            2:  [{ name: 'James',     color: '#9c27b0', quote: 'Connect!' }],
+            3:  [{ name: 'Yanan',     color: '#ff9800' }, { name: 'Lauren G.', color: '#4caf50' }],
+            4:  [{ name: 'Bea',       color: '#4a90e2' }, { name: 'Francisco', color: '#e74c3c' }],
+            5:  [{ name: 'Ramon',     color: '#3498db', quote: 'Speed is key!' }],
+            6:  [{ name: 'Erik',      color: '#9b59b6' }, { name: 'Mason',     color: '#27ae60' }],
+            7:  [{ name: 'Avital',    color: '#f39c12', quote: "I'll help!" }],
+            8:  [{ name: 'Parker',    color: '#2ecc71' }, { name: 'Zaki',      color: '#16a085' }],
+            9:  [{ name: 'Jeff',      color: '#8e44ad' }, { name: 'Lauren B.', color: '#c0392b' }],
+            10: [{ name: 'Patrick',   color: '#d35400' }, { name: 'Katy',      color: '#2980b9' }],
+            11: [{ name: 'Jason',     color: '#27ae60' }, { name: 'Ada',       color: '#e91e63' }],
+            12: [{ name: 'Murali',    color: '#e67e22' }, { name: 'Stephane',  color: '#1abc9c' }],
+            13: [{ name: 'ALL 20',    color: '#00ffff', quote: 'Almost there!' }],
+            14: [{ name: 'Jrod',      color: '#ffd700', quote: 'Final push!' }],
+            15: [{ name: 'Jrod',      color: '#ffd700', quote: 'Choose wisely...' }]
         };
 
         var SAVE_KEY = 'okrFarmingGame';
@@ -712,6 +783,13 @@
             window.addEventListener('resize', function() { self.resize(); });
             this.canvas.addEventListener('click', function(e) { self.onCanvasClick(e); });
             this.canvas.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+            this.mouseX = 0;
+            this.mouseY = 0;
+            this.canvas.addEventListener('mousemove', function(e) {
+                var rect = self.canvas.getBoundingClientRect();
+                self.mouseX = e.clientX - rect.left;
+                self.mouseY = e.clientY - rect.top;
+            });
 
             this.setupVideoIntro();
             this.buildBuildingButtons();
@@ -785,9 +863,17 @@
                 btn.innerHTML =
                     '<div class="b-name">' + b.symbol + ' ' + b.name + '</div>' +
                     '<div class="b-cost">' + b.cost + ' AC</div>' +
-                    '<div class="b-effect">' + b.desc + '</div>';
+                    '<div class="b-effect">' + b.desc + '</div>' +
+                    '<div class="b-preview" id="preview-' + type + '"></div>';
                 btn.addEventListener('click', function() {
                     self.selectBuilding(type);
+                });
+                btn.addEventListener('mouseenter', function() {
+                    self.updateBuildingPreview(type);
+                });
+                btn.addEventListener('mouseleave', function() {
+                    var el = document.getElementById('preview-' + type);
+                    if (el) el.innerHTML = '';
                 });
                 container.appendChild(btn);
             });
@@ -813,6 +899,70 @@
                     b.classList.toggle('disabled', ac < BUILDINGS[type].cost);
                 }
             });
+
+            // Refresh preview for hovered button
+            var hovered = document.querySelector('.building-btn:hover');
+            if (hovered) {
+                var hovType = hovered.getAttribute('data-type');
+                if (hovType) this.updateBuildingPreview(hovType);
+            }
+        };
+
+        OKRFarmingGame.prototype.updateBuildingPreview = function(type) {
+            var el = document.getElementById('preview-' + type);
+            if (!el || !this.state) return;
+
+            var b = BUILDINGS[type];
+
+            // Calculate current rates
+            var curMult = 1;
+            var curAc = 0;
+            var curOkr = 0;
+            for (var i = 0; i < this.nodes.length; i++) {
+                var n = this.nodes[i];
+                var lvlM = UPGRADE_POWER[n.level || 1];
+                if (n.type === 'multiplier') {
+                    curMult *= Math.pow(BUILDINGS.multiplier.multiplier, lvlM);
+                }
+                var bt = BUILDINGS[n.type];
+                if (bt.acPerSec) curAc += bt.acPerSec * lvlM;
+                if (bt.okrPerSec) curOkr += bt.okrPerSec * lvlM;
+            }
+            var currentOkrRate = curOkr * curMult;
+            var currentAcRate = curAc * curMult;
+
+            // Calculate new rates if this building is added
+            var newMult = curMult;
+            var newAc = curAc;
+            var newOkr = curOkr;
+            if (b.multiplier) {
+                newMult *= Math.pow(b.multiplier, UPGRADE_POWER[1]);
+            }
+            if (b.acPerSec) newAc += b.acPerSec * UPGRADE_POWER[1];
+            if (b.okrPerSec) newOkr += b.okrPerSec * UPGRADE_POWER[1];
+            var newOkrRate = newOkr * newMult;
+            var newAcRate = newAc * newMult;
+
+            // Build preview text
+            var lines = [];
+            var okrDiff = newOkrRate - currentOkrRate;
+            var acDiff = newAcRate - currentAcRate;
+
+            if (Math.abs(okrDiff) > 0.01) {
+                lines.push('<span style="color:#0f0">OKR/s: ' + currentOkrRate.toFixed(1) + ' → ' + newOkrRate.toFixed(1) + ' <b>(+' + okrDiff.toFixed(1) + ')</b></span>');
+            }
+            if (Math.abs(acDiff) > 0.01) {
+                lines.push('<span style="color:#ff0">AC/s: ' + currentAcRate.toFixed(1) + ' → ' + newAcRate.toFixed(1) + ' <b>(+' + acDiff.toFixed(1) + ')</b></span>');
+            }
+            if (b.multiplier && !b.acPerSec && !b.okrPerSec) {
+                var multDisplay = (newMult / curMult).toFixed(2);
+                lines.push('<span style="color:#c8f">Global mult: x' + curMult.toFixed(2) + ' → x' + newMult.toFixed(2) + '</span>');
+            }
+            if (lines.length === 0) {
+                lines.push('<span style="color:#888">No change</span>');
+            }
+
+            el.innerHTML = lines.join('<br>');
         };
 
         // =========================================================
@@ -840,6 +990,10 @@
                     this.state = data.state;
                     this.nodes = data.nodes || [];
                     this.unlockedAchievements = data.achievements || {};
+                    // Normalize nodes for backward compatibility
+                    for (var i = 0; i < this.nodes.length; i++) {
+                        if (!this.nodes[i].level) this.nodes[i].level = 1;
+                    }
                 } catch (e) {
                     this.newGame();
                     return;
@@ -956,6 +1110,22 @@
             var x = e.clientX - rect.left;
             var y = e.clientY - rect.top;
 
+            // Check if clicking on existing node
+            var clickedNode = -1;
+            for (var i = 0; i < this.nodes.length; i++) {
+                var n = this.nodes[i];
+                var dx = x - n.x, dy = y - n.y;
+                if (Math.sqrt(dx*dx + dy*dy) < 25) {
+                    clickedNode = i;
+                    break;
+                }
+            }
+
+            if (clickedNode >= 0) {
+                this.upgradeNode(clickedNode);
+                return;
+            }
+
             // Don't place too close to factory center
             var fX = this.canvas.width / 2;
             var fY = this.canvas.height / 2;
@@ -984,7 +1154,8 @@
                 x: x,
                 y: y,
                 age: 0,
-                lastProduce: 0
+                lastProduce: 0,
+                level: 1
             });
 
             this.addFloatingText(x, y - 20, '-' + b.cost + ' AC', '#ff0');
@@ -1013,6 +1184,40 @@
             }
         };
 
+        OKRFarmingGame.prototype.upgradeNode = function(idx) {
+            var node = this.nodes[idx];
+            if (!node) return;
+            var currentLevel = node.level || 1;
+            if (currentLevel >= 3) {
+                this.addFloatingText(node.x, node.y - 20, 'MAX LEVEL!', '#ffd700', 14);
+                this.playSound('click');
+                return;
+            }
+            var nextLevel = currentLevel + 1;
+            var baseCost = BUILDINGS[node.type].cost;
+            var upgradeCost = Math.floor(baseCost * UPGRADE_COSTS[nextLevel]);
+
+            if (this.state.currencies.ac < upgradeCost) {
+                this.addFloatingText(node.x, node.y - 20, 'Need ' + upgradeCost + ' AC!', '#f44');
+                this.playSound('click');
+                return;
+            }
+
+            this.state.currencies.ac -= upgradeCost;
+            node.level = nextLevel;
+            if (nextLevel >= 3) this.unlock('upgrade-3');
+
+            // Visual feedback
+            this.addFloatingText(node.x, node.y - 30, 'UPGRADED to Lv.' + nextLevel + '!', '#ffd700', 16);
+            this.addFloatingText(node.x, node.y - 50, '-' + upgradeCost + ' AC', '#ff0');
+            this.spawnParticles(node.x, node.y, '#ffd700', 15);
+            this.triggerShake(6);
+            this.playSound('complete');
+
+            this.updateBuildingButtons();
+            this.updateUI();
+        };
+
         // =========================================================
         // UPDATE LOOP
         // =========================================================
@@ -1028,7 +1233,8 @@
             var mult = 1;
             for (var i = 0; i < this.nodes.length; i++) {
                 if (this.nodes[i].type === 'multiplier') {
-                    mult *= BUILDINGS.multiplier.multiplier;
+                    var mLevel = this.nodes[i].level || 1;
+                    mult *= Math.pow(BUILDINGS.multiplier.multiplier, UPGRADE_POWER[mLevel]);
                 }
             }
 
@@ -1039,10 +1245,10 @@
                 var n = this.nodes[i];
                 n.age = (n.age || 0) + dt;
                 n.lastProduce = (n.lastProduce || 0) + dt;
-
+                var lvlMult = UPGRADE_POWER[n.level || 1];
                 var btype = BUILDINGS[n.type];
-                if (btype.acPerSec) acGain += btype.acPerSec;
-                if (btype.okrPerSec) okrGain += btype.okrPerSec;
+                if (btype.acPerSec) acGain += btype.acPerSec * lvlMult;
+                if (btype.okrPerSec) okrGain += btype.okrPerSec * lvlMult;
             }
 
             acGain *= mult;
@@ -1058,6 +1264,8 @@
             // Achievement checks
             if (okrGain > 0 && this.state.okrsCollected >= 1) this.unlock('first-okr');
             if (this.state.totalOKRs >= 50) this.unlock('collector-50');
+            if (this.nodes.length >= 10) this.unlock('nodes-10');
+            if (this.nodes.length >= 50) this.unlock('nodes-50');
 
             // Combo timer decay
             if (this.comboTimer > 0) {
@@ -1112,25 +1320,27 @@
             if (this.nodes.length > 0 && Math.random() < dt * 0.25) {
                 var rn = this.nodes[Math.floor(Math.random() * this.nodes.length)];
                 var bt = BUILDINGS[rn.type];
+                var lvlMult = UPGRADE_POWER[rn.level || 1];
                 if (bt.okrPerSec > 0) {
                     this.addFloatingText(
                         rn.x + (Math.random() - 0.5) * 20,
                         rn.y - 30,
-                        '+' + (bt.okrPerSec * mult).toFixed(1) + ' OKR',
+                        '+' + (bt.okrPerSec * lvlMult * mult).toFixed(1) + ' OKR',
                         '#0f0', 11
                     );
                 } else if (bt.acPerSec > 0) {
                     this.addFloatingText(
                         rn.x + (Math.random() - 0.5) * 20,
                         rn.y - 30,
-                        '+' + (bt.acPerSec * mult).toFixed(1) + ' AC',
+                        '+' + (bt.acPerSec * lvlMult * mult).toFixed(1) + ' AC',
                         '#ff0', 11
                     );
                 } else if (bt.multiplier) {
+                    var mPow = Math.pow(bt.multiplier, lvlMult);
                     this.addFloatingText(
                         rn.x + (Math.random() - 0.5) * 20,
                         rn.y - 30,
-                        'x' + bt.multiplier,
+                        'x' + mPow.toFixed(2),
                         '#c8f', 11
                     );
                 }
@@ -1262,6 +1472,40 @@
             // Building nodes
             for (var i = 0; i < this.nodes.length; i++) {
                 this.drawPixelNode(ctx, this.nodes[i]);
+            }
+
+            // Draw upgrade tooltip for hovered node
+            for (var i = 0; i < this.nodes.length; i++) {
+                var n = this.nodes[i];
+                var dx = this.mouseX - n.x, dy = this.mouseY - n.y;
+                if (Math.sqrt(dx*dx + dy*dy) < 25) {
+                    var lvl = n.level || 1;
+                    var tipY = n.y - (8 + (lvl > 1 ? lvl : 0)) * (3 + lvl - 1) - 15;
+                    ctx.save();
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+                    ctx.strokeStyle = '#0ff';
+                    ctx.lineWidth = 1;
+                    ctx.font = 'bold 11px Courier New';
+                    ctx.textAlign = 'center';
+                    if (lvl >= 3) {
+                        var tw = ctx.measureText('★★★ MAX LEVEL ★★★').width;
+                        ctx.fillRect(n.x - tw/2 - 8, tipY - 14, tw + 16, 22);
+                        ctx.strokeRect(n.x - tw/2 - 8, tipY - 14, tw + 16, 22);
+                        ctx.fillStyle = '#ffd700';
+                        ctx.fillText('★★★ MAX LEVEL ★★★', n.x, tipY);
+                    } else {
+                        var nextLvl = lvl + 1;
+                        var cost = Math.floor(BUILDINGS[n.type].cost * UPGRADE_COSTS[nextLvl]);
+                        var text = 'Click to upgrade \u2192 Lv.' + nextLvl + ' (' + cost + ' AC)';
+                        var tw = ctx.measureText(text).width;
+                        ctx.fillRect(n.x - tw/2 - 8, tipY - 14, tw + 16, 22);
+                        ctx.strokeRect(n.x - tw/2 - 8, tipY - 14, tw + 16, 22);
+                        ctx.fillStyle = this.state.currencies.ac >= cost ? '#0f0' : '#f44';
+                        ctx.fillText(text, n.x, tipY);
+                    }
+                    ctx.restore();
+                    break;
+                }
             }
 
             // Effects
@@ -1418,7 +1662,9 @@
         // =========================================================
 
         OKRFarmingGame.prototype.drawPixelNode = function(ctx, node) {
-            var s = 3; // pixel scale
+            var baseS = 3;
+            var lvl = node.level || 1;
+            var s = baseS + (lvl - 1); // level 1 = 3, level 2 = 4, level 3 = 5
             var x = node.x;
             var y = node.y;
             var age = node.age || 0;
@@ -1514,11 +1760,35 @@
                     break;
             }
 
+            // Upgrade glow ring
+            if (lvl >= 2) {
+                ctx.save();
+                ctx.strokeStyle = lvl === 3 ? 'rgba(255, 215, 0, 0.5)' : 'rgba(0, 255, 255, 0.3)';
+                ctx.lineWidth = lvl;
+                ctx.shadowColor = lvl === 3 ? '#ffd700' : '#0ff';
+                ctx.shadowBlur = 5 + lvl * 3;
+                ctx.beginPath();
+                ctx.arc(x, y, (6 + lvl) * s, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // Level stars
+            if (lvl >= 2) {
+                ctx.fillStyle = '#ffd700';
+                ctx.font = 'bold ' + (7 + lvl) + 'px Courier New';
+                ctx.textAlign = 'center';
+                var stars = '';
+                for (var si = 0; si < lvl; si++) stars += '★';
+                ctx.fillText(stars, x, y + (8 + lvl) * s);
+            }
+
             // Building name label below
             ctx.fillStyle = BUILDINGS[node.type].color;
             ctx.font = '9px Courier New';
             ctx.textAlign = 'center';
-            ctx.fillText(BUILDINGS[node.type].name, x, y + 7 * s);
+            var label = BUILDINGS[node.type].name + (lvl > 1 ? ' Lv.' + lvl : '');
+            ctx.fillText(label, x, y + 7 * s);
         };
 
         // =========================================================
