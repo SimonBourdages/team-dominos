@@ -4407,111 +4407,14 @@
 
         OKRFarmingGame.prototype.startMusic = function(level) {
             this.stopMusic();
-            var config = MUSIC_CONFIGS[level];
-            if (!config) return;
-
             try {
-                var ac = this.getAudioCtx();
+                if (!this._bgMusic) {
+                    this._bgMusic = new Audio('./music.mp3');
+                    this._bgMusic.loop = true;
+                    this._bgMusic.volume = 0.35;
+                }
+                this._bgMusic.play();
                 this.musicPlaying = true;
-                var self = this;
-                var beatDur = 60 / config.tempo;
-                var bassIdx = 0;
-                var melodyIdx = 0;
-                var beatCount = 0;
-
-                function midiToFreq(note) {
-                    return 440 * Math.pow(2, (note - 69) / 12);
-                }
-
-                function scheduleLoop() {
-                    if (!self.musicPlaying) return;
-                    var now = ac.currentTime;
-                    beatCount++;
-
-                    // Bass note
-                    try {
-                        var bassOsc = ac.createOscillator();
-                        var bassGain = ac.createGain();
-                        bassOsc.connect(bassGain);
-                        bassGain.connect(ac.destination);
-                        bassOsc.type = 'square';
-                        var bassNote = config.bass[bassIdx % config.bass.length];
-                        bassOsc.frequency.value = midiToFreq(bassNote);
-                        bassGain.gain.setValueAtTime(0.04, now);
-                        bassGain.gain.exponentialRampToValueAtTime(0.001, now + beatDur * 0.9);
-                        bassOsc.start(now);
-                        bassOsc.stop(now + beatDur);
-                        self.musicNodes.push(bassOsc);
-                        bassIdx++;
-                    } catch (e) {}
-
-                    // Melody note (every other beat)
-                    if (beatCount % 2 === 0) {
-                        try {
-                            var melOsc = ac.createOscillator();
-                            var melGain = ac.createGain();
-                            melOsc.connect(melGain);
-                            melGain.connect(ac.destination);
-                            melOsc.type = config.wave;
-                            var melNote = config.scale[melodyIdx % config.scale.length];
-                            melOsc.frequency.value = midiToFreq(melNote);
-                            melGain.gain.setValueAtTime(0.03, now);
-                            melGain.gain.exponentialRampToValueAtTime(0.001, now + beatDur * 1.8);
-                            melOsc.start(now);
-                            melOsc.stop(now + beatDur * 2);
-                            self.musicNodes.push(melOsc);
-                            melodyIdx++;
-                        } catch (e) {}
-                    }
-
-                    // Arpeggio (every 4th beat for epic/final moods)
-                    if ((config.mood === 'epic' || config.mood === 'final') && beatCount % 4 === 0) {
-                        try {
-                            var arpOsc = ac.createOscillator();
-                            var arpGain = ac.createGain();
-                            arpOsc.connect(arpGain);
-                            arpGain.connect(ac.destination);
-                            arpOsc.type = 'sine';
-                            var arpNote = config.scale[(melodyIdx + 2) % config.scale.length] + 12;
-                            arpOsc.frequency.value = midiToFreq(arpNote);
-                            arpGain.gain.setValueAtTime(0.015, now);
-                            arpGain.gain.exponentialRampToValueAtTime(0.001, now + beatDur * 0.5);
-                            arpOsc.start(now);
-                            arpOsc.stop(now + beatDur * 0.6);
-                            self.musicNodes.push(arpOsc);
-                        } catch (e) {}
-                    }
-
-                    // Hi-hat percussion
-                    if (config.mood === 'final' || beatCount % 4 === 0) {
-                        try {
-                            var bufSize = Math.floor(ac.sampleRate * 0.02);
-                            var buf = ac.createBuffer(1, bufSize, ac.sampleRate);
-                            var data = buf.getChannelData(0);
-                            for (var i = 0; i < bufSize; i++) {
-                                data[i] = (Math.random() * 2 - 1) * 0.5;
-                            }
-                            var noise = ac.createBufferSource();
-                            noise.buffer = buf;
-                            var hhGain = ac.createGain();
-                            noise.connect(hhGain);
-                            hhGain.connect(ac.destination);
-                            hhGain.gain.setValueAtTime(0.015, now);
-                            hhGain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
-                            noise.start(now);
-                            noise.stop(now + 0.05);
-                        } catch (e) {}
-                    }
-
-                    // Clean up old nodes
-                    if (self.musicNodes.length > 50) {
-                        self.musicNodes = self.musicNodes.slice(-20);
-                    }
-
-                    self.musicTimer = setTimeout(scheduleLoop, beatDur * 1000);
-                }
-
-                scheduleLoop();
             } catch (e) {
                 this.musicPlaying = false;
             }
@@ -4519,14 +4422,9 @@
 
         OKRFarmingGame.prototype.stopMusic = function() {
             this.musicPlaying = false;
-            if (this.musicTimer) {
-                clearTimeout(this.musicTimer);
-                this.musicTimer = null;
+            if (this._bgMusic) {
+                try { this._bgMusic.pause(); } catch (e) {}
             }
-            for (var i = 0; i < this.musicNodes.length; i++) {
-                try { this.musicNodes[i].stop(); } catch (e) {}
-            }
-            this.musicNodes = [];
         };
 
         // =========================================================
