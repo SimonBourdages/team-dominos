@@ -566,6 +566,7 @@
         <h1>OKR FARMING</h1>
         <div class="subtitle">Idle Automation Game</div>
         <button onclick="game.newGame()">NEW GAME</button>
+        <button onclick="game.startInfiniteMode()">♾️ INFINITE MODE</button>
         <button onclick="game.continueGame()">CONTINUE</button>
         <button onclick="game.clearSave()">CLEAR SAVE</button>
     </div>
@@ -1173,9 +1174,24 @@
         // =========================================================
 
         OKRFarmingGame.prototype.newGame = function() {
+            this.infiniteMode = false;
             this.state = {
                 currentLevel: 1,
                 currencies: { ac: 50, el: 0 },
+                totalOKRs: 0,
+                completedLevels: [],
+                okrsCollected: 0
+            };
+            this.nodes = [];
+            this.unlockedAchievements = {};
+            this.startLevel(1);
+        };
+
+        OKRFarmingGame.prototype.startInfiniteMode = function() {
+            this.infiniteMode = true;
+            this.state = {
+                currentLevel: 1,
+                currencies: { ac: 999999999, el: 500 },
                 totalOKRs: 0,
                 completedLevels: [],
                 okrsCollected: 0
@@ -1299,11 +1315,11 @@
 
             // Update labels
             var lv = LEVELS[level];
-            document.getElementById('currentLevel').textContent = level;
-            document.getElementById('okrGoal').textContent = this.formatNumber(lv.okrGoal);
-            document.getElementById('objective').textContent = lv.description;
+            document.getElementById('currentLevel').textContent = this.infiniteMode ? '∞' : level;
+            document.getElementById('okrGoal').textContent = this.infiniteMode ? '∞' : this.formatNumber(lv.okrGoal);
+            document.getElementById('objective').textContent = this.infiniteMode ? 'Infinite Mode — No limits!' : lv.description;
             document.getElementById('okrCount').textContent = '0';
-            document.getElementById('progressBar').style.width = '0%';
+            document.getElementById('progressBar').style.width = this.infiniteMode ? '100%' : '0%';
 
             this.updateUI();
             this.updateBuildingButtons();
@@ -1596,9 +1612,9 @@
                 }
             }
 
-            // Check level completion
+            // Check level completion (skip in infinite mode)
             var lv = LEVELS[this.state.currentLevel];
-            if (this.state.okrsCollected >= lv.okrGoal) {
+            if (!this.infiniteMode && this.state.okrsCollected >= lv.okrGoal) {
                 this.completeLevel();
                 return;
             }
