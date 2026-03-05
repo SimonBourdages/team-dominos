@@ -14,7 +14,7 @@
         body {
             background: #000;
             overflow: hidden;
-            font-family: 'Courier New', monospace;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
             color: #0ff;
         }
 
@@ -1697,7 +1697,7 @@
             var padding = 10;
             var maxW = 0;
             ctx.save();
-            ctx.font = 'bold 11px Courier New';
+            ctx.font = 'bold 11px Segoe UI';
             for (var i = 0; i < lines.length; i++) {
                 var w = ctx.measureText(lines[i].text).width;
                 if (w > maxW) maxW = w;
@@ -1724,7 +1724,7 @@
             for (var i = 0; i < lines.length; i++) {
                 var ln = lines[i];
                 if (!ln.text) continue;
-                ctx.font = (ln.bold ? 'bold ' : '') + '11px Courier New';
+                ctx.font = (ln.bold ? 'bold ' : '') + '11px Segoe UI';
                 ctx.fillStyle = ln.color || '#ccc';
                 ctx.fillText(ln.text, boxX + padding, boxY + padding + i * lineH + 10);
             }
@@ -1809,7 +1809,7 @@
             }
 
             // Status text
-            ctx.font = 'bold 10px Courier New';
+            ctx.font = 'bold 10px Segoe UI';
             ctx.textAlign = 'center';
             if (tooCloseToFactory) {
                 ctx.fillStyle = '#f66';
@@ -2035,7 +2035,7 @@
 
             // Label
             ctx.fillStyle = '#0ff';
-            ctx.font = 'bold 11px Courier New';
+            ctx.font = 'bold 11px Segoe UI';
             ctx.textAlign = 'center';
             ctx.fillText('OKR FACTORY', cx, cy + 10 * s);
         };
@@ -2250,7 +2250,7 @@
                             this._pxRect(ctx, x + s, y + s, s, s, '#eee');
                         }
                         ctx.fillStyle = 'rgba(206,147,255,0.7)';
-                        ctx.font = 'bold 9px Courier New';
+                        ctx.font = 'bold 9px Segoe UI';
                         ctx.textAlign = 'center';
                         ctx.fillText('x' + UPGRADE_POWER[1].toFixed(1), x, y - 6 * s);
                     } else if (lvl === 2) {
@@ -2287,7 +2287,7 @@
                             this._pxRect(ctx, scx - s * 0.5, scy + s * 0.5, s, s * 0.5, '#ce93d8');
                         }
                         ctx.fillStyle = 'rgba(206,147,255,0.8)';
-                        ctx.font = 'bold 9px Courier New';
+                        ctx.font = 'bold 9px Segoe UI';
                         ctx.textAlign = 'center';
                         ctx.fillText('x' + UPGRADE_POWER[2].toFixed(1), x, y - 8 * s);
                     } else {
@@ -2331,7 +2331,7 @@
                             }
                         }
                         ctx.fillStyle = '#ffd700';
-                        ctx.font = 'bold 10px Courier New';
+                        ctx.font = 'bold 10px Segoe UI';
                         ctx.textAlign = 'center';
                         ctx.fillText('x' + UPGRADE_POWER[3].toFixed(1), x, y - 9 * s);
                     }
@@ -2399,7 +2399,7 @@
                         ctx.stroke();
                         // Warning symbol
                         ctx.fillStyle = 'rgba(255,200,0,0.7)';
-                        ctx.font = 'bold 10px Courier New';
+                        ctx.font = 'bold 10px Segoe UI';
                         ctx.textAlign = 'center';
                         ctx.fillText('\u26A0', x, y - 7 * s);
                     } else {
@@ -2463,7 +2463,7 @@
                         }
                         // Rate label
                         ctx.fillStyle = '#ffd700';
-                        ctx.font = 'bold 9px Courier New';
+                        ctx.font = 'bold 9px Segoe UI';
                         ctx.textAlign = 'center';
                         ctx.fillText('+450 OKR/s', x, y - 8 * s);
                     }
@@ -2620,7 +2620,7 @@
                         }
                         // Rate label
                         ctx.fillStyle = '#ffd700';
-                        ctx.font = 'bold 9px Courier New';
+                        ctx.font = 'bold 9px Segoe UI';
                         ctx.textAlign = 'center';
                         ctx.fillText('+' + (5 * UPGRADE_POWER[3]).toFixed(0) + ' EL/s', x, y - 11 * s);
                     }
@@ -2638,7 +2638,7 @@
                         this._pxRect(ctx, x - s * 0.3, y - s * 0.3, s * 0.6, s * 0.6, '#fff');
                         // $ sign
                         ctx.fillStyle = '#ffd700';
-                        ctx.font = 'bold 10px Courier New';
+                        ctx.font = 'bold 10px Segoe UI';
                         ctx.textAlign = 'center';
                         ctx.fillText('$', x, y - 4.5 * s);
                         // Flipping coin (width oscillates)
@@ -2680,7 +2680,7 @@
                         this._pxRect(ctx, x - coinW2 / 2 + s * 0.3, y + 4.8 * s, coinW2 - s * 0.6, 1.2 * s, '#daa520');
                         // Interest percentage label
                         ctx.fillStyle = '#ffd700';
-                        ctx.font = 'bold 9px Courier New';
+                        ctx.font = 'bold 9px Segoe UI';
                         ctx.textAlign = 'center';
                         ctx.fillText((0.02 * UPGRADE_POWER[2] * 100).toFixed(0) + '%', x, y - 6.5 * s);
                     } else {
@@ -2727,7 +2727,7 @@
                         }
                         // $$$ signs
                         ctx.fillStyle = '#ffd700';
-                        ctx.font = 'bold 11px Courier New';
+                        ctx.font = 'bold 11px Segoe UI';
                         ctx.textAlign = 'center';
                         ctx.fillText('$$$', x, y - 10 * s);
                     }
@@ -2759,12 +2759,12 @@
             // Level star indicators
             if (lvl === 2) {
                 ctx.fillStyle = '#00e5ff';
-                ctx.font = 'bold 9px Courier New';
+                ctx.font = 'bold 9px Segoe UI';
                 ctx.textAlign = 'center';
                 ctx.fillText('\u2605\u2605', x, y + (9 + lvl) * s);
             } else if (lvl === 3) {
                 ctx.fillStyle = '#ffd700';
-                ctx.font = 'bold 11px Courier New';
+                ctx.font = 'bold 11px Segoe UI';
                 ctx.textAlign = 'center';
                 ctx.fillText('\u2605\u2605\u2605', x, y + (9 + lvl) * s);
             }
@@ -2790,7 +2790,7 @@
             // Building name label
             var labelColor = lvl === 3 ? '#ffd700' : BUILDINGS[node.type].color;
             ctx.fillStyle = labelColor;
-            ctx.font = lvl === 3 ? 'bold 10px Courier New' : '9px Courier New';
+            ctx.font = lvl === 3 ? 'bold 10px Segoe UI' : '9px Segoe UI';
             ctx.textAlign = 'center';
             var label = BUILDINGS[node.type].name + (lvl > 1 ? ' Lv.' + lvl : '');
             ctx.fillText(label, x, y + 7 * s);
@@ -2877,7 +2877,7 @@
 
                 // Name tag
                 ctx.fillStyle = sp.color;
-                ctx.font = 'bold 8px Courier New';
+                ctx.font = 'bold 8px Segoe UI';
                 ctx.textAlign = 'center';
                 ctx.fillText(sp.name, sx, baseY + 6);
 
@@ -2900,7 +2900,7 @@
 
                     // Text
                     ctx.fillStyle = '#fff';
-                    ctx.font = '8px Courier New';
+                    ctx.font = '8px Segoe UI';
                     ctx.fillText(sp.quote, sx, by + 10);
                 }
             }
@@ -2915,7 +2915,7 @@
                 var comboAlpha = Math.min(1, this.comboTimer / 1.5);
                 ctx.globalAlpha = comboAlpha;
                 ctx.fillStyle = '#ff0';
-                ctx.font = 'bold 28px Courier New';
+                ctx.font = 'bold 28px Segoe UI';
                 ctx.textAlign = 'center';
                 ctx.fillText('COMBO x' + this.combo, w / 2, 50);
 
@@ -2956,7 +2956,7 @@
                 var alpha = Math.max(0, ft.life / ft.maxLife);
                 ctx.globalAlpha = alpha;
                 ctx.fillStyle = ft.color;
-                ctx.font = (ft.size || 14) + 'px Courier New';
+                ctx.font = (ft.size || 14) + 'px Segoe UI';
                 ctx.textAlign = 'center';
 
                 // Shadow for readability
