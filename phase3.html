@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Team Dominos - Phase 3 Intro</title>
+    <title>Team Dominos - OKR Farming Intro</title>
     <style>
         html, body {
             margin: 0;
@@ -49,22 +49,22 @@
         <source src="./phase3-intro.mp4" type="video/mp4">
     </video>
     <div id="overlay">
-        <h1>PHASE 3: OKR FARMING</h1>
+        <h1>OKR FARMING</h1>
         <p>Loading automation grid...</p>
-        <button id="skipBtn" onclick="enterPhase3()">SKIP INTRO</button>
+        <button id="skipBtn" onclick="enterGame()">SKIP INTRO</button>
     </div>
     <script>
-        const target = './index.html?mode=phase3';
+        const target = './index.html';
         let redirected = false;
-        function enterPhase3() {
+        function enterGame() {
             if (redirected) return;
             redirected = true;
             window.location.href = target;
         }
         const video = document.getElementById('introVideo');
-        video.addEventListener('ended', enterPhase3);
-        video.addEventListener('error', enterPhase3);
-        setTimeout(enterPhase3, 12000);
+        video.addEventListener('ended', enterGame);
+        video.addEventListener('error', enterGame);
+        setTimeout(enterGame, 12000);
     </script>
 </body>
 </html>
