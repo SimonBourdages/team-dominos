@@ -534,6 +534,14 @@
             <span class="stat-label">AC/s</span>
             <span class="stat-value" id="acRate" style="color:#ff0;">0</span>
         </div>
+        <div class="stat-row">
+            <span class="stat-label">⚡ EL</span>
+            <span class="stat-value" id="elDisplay" style="color:#ff9800;">0</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">EL/s</span>
+            <span class="stat-value" id="elRate" style="color:#ff9800;">0</span>
+        </div>
     </div>
 
     <div id="levelInfo" style="display:none;">
@@ -634,10 +642,12 @@
         var UPGRADE_POWER = { 1: 1.0, 2: 2.0, 3: 4.5 }; // multiplier on output
 
         var BUILDINGS = {
-            collector:   { name: 'Collector',   cost: 50,   acPerSec: 2,   okrPerSec: 0,   color: '#4caf50', desc: '+2 AC/s',        symbol: '📥' },
-            processor:   { name: 'Processor',   cost: 150,  acPerSec: 0,   okrPerSec: 5,   color: '#2196f3', desc: '+5 OKR/s',       symbol: '💻' },
-            multiplier:  { name: 'Multiplier',  cost: 500,  acPerSec: 0,   okrPerSec: 0,   color: '#9c27b0', desc: 'x1.5 all rates', symbol: '✖️', multiplier: 1.5 },
-            synthesizer: { name: 'Synthesizer', cost: 2000, acPerSec: 0,   okrPerSec: 100, color: '#f44336', desc: '+100 OKR/s',     symbol: '⚛️' }
+            collector:   { name: 'Collector',   cost: 50,   acPerSec: 2,   okrPerSec: 0,   elCost: 1,  color: '#4caf50', desc: '+2 AC/s',        symbol: '📥' },
+            processor:   { name: 'Processor',   cost: 150,  acPerSec: 0,   okrPerSec: 5,   elCost: 3,  color: '#2196f3', desc: '+5 OKR/s',       symbol: '💻' },
+            multiplier:  { name: 'Multiplier',  cost: 500,  acPerSec: 0,   okrPerSec: 0,   elCost: 5,  color: '#9c27b0', desc: 'x1.5 all rates', symbol: '✖️', multiplier: 1.5 },
+            synthesizer: { name: 'Synthesizer', cost: 2000, acPerSec: 0,   okrPerSec: 100, elCost: 10, color: '#f44336', desc: '+100 OKR/s',     symbol: '⚛️' },
+            generator:   { name: 'Generator',   cost: 75,   acPerSec: 0,   okrPerSec: 0,   elPerSec: 5, elCost: 0, color: '#ff9800', desc: '+5 EL/s',           symbol: '⚡' },
+            bank:        { name: 'Bank',         cost: 300,  acPerSec: 0,   okrPerSec: 0,   elCost: 0,   color: '#ffd700', desc: '2% AC interest + carryover', symbol: '🏦', interestRate: 0.02 }
         };
 
         var ACHIEVEMENTS = {
@@ -759,6 +769,9 @@
             // Rates display
             this.currentOkrRate = 0;
             this.currentAcRate = 0;
+            this.currentElRate = 0;
+            this.currentInterestRate = 0;
+            this.brownout = false;
 
             // Screen shake
             this.screenShake = { x: 0, y: 0, intensity: 0 };
@@ -853,7 +866,7 @@
             var container = document.getElementById('buildings');
             container.innerHTML = '';
             var self = this;
-            var types = ['collector', 'processor', 'multiplier', 'synthesizer'];
+            var types = ['collector', 'processor', 'multiplier', 'synthesizer', 'generator', 'bank'];
 
             types.forEach(function(type) {
                 var b = BUILDINGS[type];
@@ -918,6 +931,9 @@
             var curMult = 1;
             var curAc = 0;
             var curOkr = 0;
+            var curEl = 0;
+            var curElDrain = 0;
+            var curInterest = 0;
             for (var i = 0; i < this.nodes.length; i++) {
                 var n = this.nodes[i];
                 var lvlM = UPGRADE_POWER[n.level || 1];
@@ -927,21 +943,32 @@
                 var bt = BUILDINGS[n.type];
                 if (bt.acPerSec) curAc += bt.acPerSec * lvlM;
                 if (bt.okrPerSec) curOkr += bt.okrPerSec * lvlM;
+                if (bt.elPerSec) curEl += bt.elPerSec * lvlM;
+                if (bt.elCost) curElDrain += bt.elCost * lvlM;
+                if (bt.interestRate) curInterest += bt.interestRate * lvlM;
             }
             var currentOkrRate = curOkr * curMult;
             var currentAcRate = curAc * curMult;
+            var currentElRate = curEl * curMult - curElDrain * curMult;
 
             // Calculate new rates if this building is added
             var newMult = curMult;
             var newAc = curAc;
             var newOkr = curOkr;
+            var newEl = curEl;
+            var newElDrain = curElDrain;
+            var newInterest = curInterest;
             if (b.multiplier) {
                 newMult *= Math.pow(b.multiplier, UPGRADE_POWER[1]);
             }
             if (b.acPerSec) newAc += b.acPerSec * UPGRADE_POWER[1];
             if (b.okrPerSec) newOkr += b.okrPerSec * UPGRADE_POWER[1];
+            if (b.elPerSec) newEl += b.elPerSec * UPGRADE_POWER[1];
+            if (b.elCost) newElDrain += b.elCost * UPGRADE_POWER[1];
+            if (b.interestRate) newInterest += b.interestRate * UPGRADE_POWER[1];
             var newOkrRate = newOkr * newMult;
             var newAcRate = newAc * newMult;
+            var newElRate = newEl * newMult - newElDrain * newMult;
 
             // Build preview text
             var lines = [];
@@ -958,6 +985,16 @@
                 var multDisplay = (newMult / curMult).toFixed(2);
                 lines.push('<span style="color:#c8f">Global mult: x' + curMult.toFixed(2) + ' → x' + newMult.toFixed(2) + '</span>');
             }
+            var elDiff = newElRate - currentElRate;
+            if (Math.abs(elDiff) > 0.01) {
+                var elColor = elDiff >= 0 ? '#ff9800' : '#f44';
+                lines.push('<span style="color:' + elColor + '">EL/s: ' + currentElRate.toFixed(1) + ' → ' + newElRate.toFixed(1) + ' <b>(' + (elDiff >= 0 ? '+' : '') + elDiff.toFixed(1) + ')</b></span>');
+            }
+            if (b.interestRate) {
+                var pct = (b.interestRate * UPGRADE_POWER[1] * 100).toFixed(1);
+                lines.push('<span style="color:#ffd700">Interest: +' + pct + '% AC/s</span>');
+                lines.push('<span style="color:#ffd700">Carryover: +10% AC on level up</span>');
+            }
             if (lines.length === 0) {
                 lines.push('<span style="color:#888">No change</span>');
             }
@@ -972,7 +1009,7 @@
         OKRFarmingGame.prototype.newGame = function() {
             this.state = {
                 currentLevel: 1,
-                currencies: { ac: 50 },
+                currencies: { ac: 50, el: 0 },
                 totalOKRs: 0,
                 completedLevels: [],
                 okrsCollected: 0
@@ -994,6 +1031,7 @@
                     for (var i = 0; i < this.nodes.length; i++) {
                         if (!this.nodes[i].level) this.nodes[i].level = 1;
                     }
+                    if (this.state.currencies.el === undefined) this.state.currencies.el = 0;
                 } catch (e) {
                     this.newGame();
                     return;
@@ -1034,6 +1072,28 @@
         OKRFarmingGame.prototype.startLevel = function(level) {
             this.state.currentLevel = level;
             this.state.okrsCollected = 0;
+
+            // Bank carryover - each bank carries over 10% of AC (max 50%)
+            var carryoverPct = 0;
+            if (this.nodes && level > 1) {
+                for (var i = 0; i < this.nodes.length; i++) {
+                    if (this.nodes[i].type === 'bank') carryoverPct += 0.10;
+                }
+                carryoverPct = Math.min(carryoverPct, 0.50);
+                var carryAC = Math.floor(this.state.currencies.ac * carryoverPct);
+                this.state.currencies.ac = carryAC;
+                this.state.currencies.el = 0;
+                if (carryAC > 0) {
+                    this.addFloatingText(this.canvas.width / 2, this.canvas.height / 2 - 30, 'Bank carried over ' + carryAC + ' AC!', '#ffd700', 16);
+                }
+            } else {
+                // First level or no nodes
+                if (level === 1) {
+                    // keep starting AC
+                }
+                this.state.currencies.el = 0;
+            }
+
             this.nodes = [];
             this.particles = [];
             this.floatingTexts = [];
@@ -1043,6 +1103,9 @@
             this.running = true;
             this.currentOkrRate = 0;
             this.currentAcRate = 0;
+            this.currentElRate = 0;
+            this.currentInterestRate = 0;
+            this.brownout = false;
 
             // Show game UI
             document.getElementById('menu').style.display = 'none';
@@ -1076,6 +1139,14 @@
             if (level === 3 && !this.tutorialShown['multiplier']) {
                 this.showHint('Multipliers boost ALL production rates by 1.5x each!');
                 this.tutorialShown['multiplier'] = true;
+            }
+            if (level === 4 && !this.tutorialShown['generator']) {
+                this.showHint('Buildings need Electricity! Place Generators (⚡) to power them.');
+                this.tutorialShown['generator'] = true;
+            }
+            if (level === 5 && !this.tutorialShown['bank']) {
+                this.showHint('Banks earn interest on your AC and carry some over between levels!');
+                this.tutorialShown['bank'] = true;
             }
 
             // Start music
@@ -1241,6 +1312,9 @@
             // Accumulate production from all buildings
             var acGain = 0;
             var okrGain = 0;
+            var elGain = 0;
+            var elDrain = 0;
+            var totalInterest = 0;
             for (var i = 0; i < this.nodes.length; i++) {
                 var n = this.nodes[i];
                 n.age = (n.age || 0) + dt;
@@ -1249,13 +1323,36 @@
                 var btype = BUILDINGS[n.type];
                 if (btype.acPerSec) acGain += btype.acPerSec * lvlMult;
                 if (btype.okrPerSec) okrGain += btype.okrPerSec * lvlMult;
+                if (btype.elPerSec) elGain += btype.elPerSec * lvlMult;
+                if (btype.elCost) elDrain += btype.elCost * lvlMult;
+                if (btype.interestRate) totalInterest += btype.interestRate * UPGRADE_POWER[n.level || 1];
             }
 
             acGain *= mult;
             okrGain *= mult;
+            elGain *= mult;
+            elDrain *= mult;
+
+            // Bank interest
+            var bankInterest = totalInterest * this.state.currencies.ac * dt;
+            this.state.currencies.ac += bankInterest;
+
+            // Electricity balance
+            this.state.currencies.el += (elGain - elDrain) * dt;
+            if (this.state.currencies.el < 0) this.state.currencies.el = 0;
+
+            // Brownout: if electricity is zero and there's drain, halve production
+            var brownout = (this.state.currencies.el <= 0 && elDrain > elGain);
+            if (brownout) {
+                okrGain *= 0.5;
+                acGain *= 0.5;
+            }
 
             this.currentOkrRate = okrGain;
             this.currentAcRate = acGain;
+            this.currentElRate = elGain - elDrain;
+            this.currentInterestRate = totalInterest;
+            this.brownout = brownout;
 
             this.state.currencies.ac += acGain * dt;
             this.state.okrsCollected += okrGain * dt;
@@ -1433,6 +1530,14 @@
             document.getElementById('okrRate').textContent = this.currentOkrRate.toFixed(1);
             document.getElementById('acRate').textContent = this.currentAcRate.toFixed(1);
 
+            document.getElementById('elDisplay').textContent = this.formatNumber(Math.floor(this.state.currencies.el));
+            var elRateEl = document.getElementById('elRate');
+            elRateEl.textContent = (this.currentElRate >= 0 ? '+' : '') + this.currentElRate.toFixed(1);
+            elRateEl.style.color = this.currentElRate >= 0 ? '#ff9800' : '#f44';
+            if (this.brownout) {
+                elRateEl.textContent += ' ⚠ BROWNOUT';
+            }
+
             var pct = Math.min(100, (this.state.okrsCollected / lv.okrGoal) * 100);
             document.getElementById('progressBar').style.width = pct + '%';
         };
@@ -1518,6 +1623,9 @@
             var nodeOkr = (bt.okrPerSec || 0) * lvlMult;
             var nodeAc = (bt.acPerSec || 0) * lvlMult;
             var nodeMult = bt.multiplier ? Math.pow(bt.multiplier, lvlMult) : 0;
+            var nodeEl = (bt.elPerSec || 0) * lvlMult;
+            var nodeElCost = (bt.elCost || 0) * lvlMult;
+            var nodeInterest = bt.interestRate ? bt.interestRate * lvlMult : 0;
 
             // Pulsing highlight ring around the node
             var pulse = Math.sin(Date.now() * 0.005) * 0.15 + 0.55;
@@ -1535,6 +1643,12 @@
             if (nodeOkr > 0) lines.push({ text: 'Producing: ' + nodeOkr.toFixed(1) + ' OKR/s', color: '#0f0' });
             if (nodeAc > 0) lines.push({ text: 'Producing: ' + nodeAc.toFixed(1) + ' AC/s', color: '#ff0' });
             if (nodeMult > 0) lines.push({ text: 'Multiplier: x' + nodeMult.toFixed(2), color: '#c8f' });
+            if (nodeEl > 0) lines.push({ text: 'Producing: +' + nodeEl.toFixed(1) + ' EL/s', color: '#ff9800' });
+            if (nodeElCost > 0) lines.push({ text: 'Consuming: -' + nodeElCost.toFixed(1) + ' EL/s', color: '#ff9800' });
+            if (nodeInterest > 0) {
+                lines.push({ text: 'Interest: ' + (nodeInterest * 100).toFixed(1) + '% AC/s', color: '#ffd700' });
+                lines.push({ text: 'Carryover: 10% AC on level up', color: '#ffd700' });
+            }
 
             lines.push({ text: '', color: '' }); // spacer
 
@@ -1548,6 +1662,9 @@
                 var nextOkr = (bt.okrPerSec || 0) * nextPower;
                 var nextAc = (bt.acPerSec || 0) * nextPower;
                 var nextMult = bt.multiplier ? Math.pow(bt.multiplier, nextPower) : 0;
+                var nextEl = (bt.elPerSec || 0) * nextPower;
+                var nextElCost = (bt.elCost || 0) * nextPower;
+                var nextInterest = bt.interestRate ? bt.interestRate * nextPower : 0;
 
                 lines.push({ text: '⬆ UPGRADE to Lv.' + nextLvl + '  (' + cost + ' AC)', color: canAfford ? '#0f0' : '#f44', bold: true });
 
@@ -1559,6 +1676,15 @@
                 }
                 if (bt.multiplier) {
                     lines.push({ text: 'Mult: x' + nodeMult.toFixed(2) + ' → x' + nextMult.toFixed(2), color: '#c8f' });
+                }
+                if (bt.elPerSec > 0) {
+                    lines.push({ text: 'EL/s: +' + nodeEl.toFixed(1) + ' → +' + nextEl.toFixed(1), color: '#ff9800' });
+                }
+                if (bt.elCost > 0) {
+                    lines.push({ text: 'EL cost: -' + nodeElCost.toFixed(1) + ' → -' + nextElCost.toFixed(1), color: '#ff9800' });
+                }
+                if (bt.interestRate) {
+                    lines.push({ text: 'Interest: ' + (nodeInterest * 100).toFixed(1) + '% → ' + (nextInterest * 100).toFixed(1) + '%', color: '#ffd700' });
                 }
 
                 if (!canAfford) {
@@ -2340,6 +2466,270 @@
                         ctx.font = 'bold 9px Courier New';
                         ctx.textAlign = 'center';
                         ctx.fillText('+450 OKR/s', x, y - 8 * s);
+                    }
+                    break;
+
+                case 'generator':
+                    if (lvl === 1) {
+                        // Lv.1 — Orange power plant with smokestack and turbine fan
+                        // Base building
+                        this._pxRect(ctx, x - 4 * s, y - 2 * s, 8 * s, 5 * s, '#e65100');
+                        this._pxRect(ctx, x - 3 * s, y - 3 * s, 6 * s, 1 * s, '#f57c00');
+                        // Smokestack
+                        this._pxRect(ctx, x - 1 * s, y - 7 * s, 2 * s, 4 * s, '#bf360c');
+                        this._pxRect(ctx, x - 2 * s, y - 7 * s, 4 * s, 1 * s, '#e65100');
+                        // Smoke puffs
+                        var smokeOff = (age * 2) % 4;
+                        ctx.fillStyle = 'rgba(200,200,200,' + (0.3 + Math.sin(age * 3) * 0.15).toFixed(2) + ')';
+                        ctx.beginPath();
+                        ctx.arc(x, y - 8 * s - smokeOff * s, 1.5 * s, 0, Math.PI * 2);
+                        ctx.fill();
+                        // Turbine fan (rotating line)
+                        var fanAngle = age * 5;
+                        ctx.save();
+                        ctx.strokeStyle = '#ffb74d';
+                        ctx.lineWidth = 2;
+                        for (var fi = 0; fi < 3; fi++) {
+                            var fa = fanAngle + fi * (Math.PI * 2 / 3);
+                            ctx.beginPath();
+                            ctx.moveTo(x + 3 * s, y);
+                            ctx.lineTo(x + 3 * s + Math.cos(fa) * 2 * s, y + Math.sin(fa) * 2 * s);
+                            ctx.stroke();
+                        }
+                        ctx.restore();
+                        // Lightning bolt icon
+                        this._pxRect(ctx, x - s * 0.5, y - 1 * s, s, s * 0.5, '#ffeb3b');
+                        this._pxRect(ctx, x - s, y - s * 0.5, s * 1.5, s * 0.5, '#ffeb3b');
+                        this._pxRect(ctx, x - s * 0.5, y, s, s * 0.5, '#ffeb3b');
+                    } else if (lvl === 2) {
+                        // Lv.2 — Larger with two smokestacks, bigger turbine, electric arcs
+                        // Glow
+                        ctx.save();
+                        ctx.fillStyle = 'rgba(255,152,0,0.1)';
+                        ctx.beginPath();
+                        ctx.arc(x, y, 7 * s, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                        // Base building
+                        this._pxRect(ctx, x - 5 * s, y - 3 * s, 10 * s, 6 * s, '#e65100');
+                        this._pxRect(ctx, x - 4 * s, y - 4 * s, 8 * s, 1 * s, '#f57c00');
+                        this._pxRect(ctx, x - 5 * s, y + 3 * s, 10 * s, 1 * s, '#bf360c');
+                        // Two smokestacks
+                        this._pxRect(ctx, x - 3 * s, y - 8 * s, 2 * s, 4 * s, '#bf360c');
+                        this._pxRect(ctx, x + 1 * s, y - 8 * s, 2 * s, 4 * s, '#bf360c');
+                        this._pxRect(ctx, x - 4 * s, y - 8 * s, 4 * s, 1 * s, '#e65100');
+                        this._pxRect(ctx, x, y - 8 * s, 4 * s, 1 * s, '#e65100');
+                        // Smoke
+                        for (var si2 = 0; si2 < 2; si2++) {
+                            var sx2 = x + (si2 === 0 ? -2 : 2) * s;
+                            var sOff2 = ((age * 2 + si2) % 5);
+                            ctx.fillStyle = 'rgba(200,200,200,' + (0.25 + Math.sin(age * 3 + si2) * 0.1).toFixed(2) + ')';
+                            ctx.beginPath();
+                            ctx.arc(sx2, y - 9 * s - sOff2 * s, 1.5 * s, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                        // Bigger turbine
+                        var fanAngle2 = age * 7;
+                        ctx.save();
+                        ctx.strokeStyle = '#ffb74d';
+                        ctx.lineWidth = 2.5;
+                        for (var fi2 = 0; fi2 < 4; fi2++) {
+                            var fa2 = fanAngle2 + fi2 * (Math.PI / 2);
+                            ctx.beginPath();
+                            ctx.moveTo(x, y);
+                            ctx.lineTo(x + Math.cos(fa2) * 3 * s, y + Math.sin(fa2) * 3 * s);
+                            ctx.stroke();
+                        }
+                        ctx.restore();
+                        // Electric arcs between stacks
+                        if (Math.sin(age * 6) > 0.3) {
+                            ctx.save();
+                            ctx.strokeStyle = 'rgba(255,235,59,0.8)';
+                            ctx.lineWidth = 1.5;
+                            ctx.beginPath();
+                            ctx.moveTo(x - 2 * s, y - 7 * s);
+                            ctx.lineTo(x - s * 0.5, y - 6 * s + Math.sin(age * 10) * s);
+                            ctx.lineTo(x + s * 0.5, y - 7 * s);
+                            ctx.lineTo(x + 2 * s, y - 7 * s);
+                            ctx.stroke();
+                            ctx.restore();
+                        }
+                    } else {
+                        // Lv.3 — Massive plant with three stacks, golden turbine, lightning
+                        // Golden glow
+                        ctx.save();
+                        ctx.fillStyle = 'rgba(255,193,7,' + (0.1 + Math.sin(age * 2) * 0.06).toFixed(3) + ')';
+                        ctx.beginPath();
+                        ctx.arc(x, y, 9 * s, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                        // Base
+                        this._pxRect(ctx, x - 6 * s, y - 4 * s, 12 * s, 7 * s, '#e65100');
+                        this._pxRect(ctx, x - 5 * s, y - 5 * s, 10 * s, 1 * s, '#ff9800');
+                        this._pxRect(ctx, x - 6 * s, y + 3 * s, 12 * s, 1 * s, '#bf360c');
+                        // Three smokestacks
+                        for (var st3 = -1; st3 <= 1; st3++) {
+                            this._pxRect(ctx, x + st3 * 3 * s - s, y - 9 * s, 2 * s, 4 * s, '#bf360c');
+                            this._pxRect(ctx, x + st3 * 3 * s - 1.5 * s, y - 9 * s, 3 * s, 1 * s, '#e65100');
+                            // Smoke
+                            var sOff3 = ((age * 2 + st3 * 1.3) % 6);
+                            ctx.fillStyle = 'rgba(220,220,220,' + (0.2 + Math.sin(age * 3 + st3 * 2) * 0.1).toFixed(2) + ')';
+                            ctx.beginPath();
+                            ctx.arc(x + st3 * 3 * s, y - 10 * s - sOff3 * s, 2 * s, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                        // Golden turbine
+                        var fanAngle3 = age * 9;
+                        ctx.save();
+                        ctx.strokeStyle = '#ffd700';
+                        ctx.lineWidth = 3;
+                        for (var fi3 = 0; fi3 < 6; fi3++) {
+                            var fa3 = fanAngle3 + fi3 * (Math.PI / 3);
+                            ctx.beginPath();
+                            ctx.moveTo(x, y);
+                            ctx.lineTo(x + Math.cos(fa3) * 3.5 * s, y + Math.sin(fa3) * 3.5 * s);
+                            ctx.stroke();
+                        }
+                        ctx.restore();
+                        // Bright lightning bolts radiating outward
+                        for (var lb3 = 0; lb3 < 4; lb3++) {
+                            if (Math.sin(age * 8 + lb3 * 1.5) > 0.4) {
+                                var lba = lb3 * (Math.PI / 2) + age * 0.3;
+                                var lbx1 = x + Math.cos(lba) * 4 * s;
+                                var lby1 = y + Math.sin(lba) * 4 * s;
+                                var lbx2 = x + Math.cos(lba) * 7 * s;
+                                var lby2 = y + Math.sin(lba) * 7 * s;
+                                ctx.save();
+                                ctx.strokeStyle = 'rgba(255,235,59,0.9)';
+                                ctx.lineWidth = 2;
+                                ctx.beginPath();
+                                ctx.moveTo(lbx1, lby1);
+                                ctx.lineTo((lbx1 + lbx2) / 2 + Math.sin(age * 12) * s, (lby1 + lby2) / 2);
+                                ctx.lineTo(lbx2, lby2);
+                                ctx.stroke();
+                                ctx.restore();
+                            }
+                        }
+                        // Sparking particles
+                        for (var sp = 0; sp < 3; sp++) {
+                            var spa = age * 4 + sp * 2.1;
+                            var spr = 5 * s;
+                            var spx3 = x + Math.cos(spa) * spr;
+                            var spy3 = y + Math.sin(spa) * spr;
+                            this._pxRect(ctx, spx3 - s * 0.3, spy3 - s * 0.3, s * 0.6, s * 0.6, '#ffeb3b');
+                        }
+                        // Rate label
+                        ctx.fillStyle = '#ffd700';
+                        ctx.font = 'bold 9px Courier New';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('+' + (5 * UPGRADE_POWER[3]).toFixed(0) + ' EL/s', x, y - 11 * s);
+                    }
+                    break;
+
+                case 'bank':
+                    if (lvl === 1) {
+                        // Lv.1 — Gold/brass rectangular vault with $ sign and flipping coin
+                        // Thick walls
+                        this._pxRect(ctx, x - 4 * s, y - 4 * s, 8 * s, 8 * s, '#b8860b');
+                        this._pxRect(ctx, x - 3 * s, y - 3 * s, 6 * s, 6 * s, '#daa520');
+                        this._pxRect(ctx, x - 2 * s, y - 2 * s, 4 * s, 4 * s, '#ffd700');
+                        // Vault door
+                        this._pxRect(ctx, x - 1 * s, y - 1 * s, 2 * s, 3 * s, '#b8860b');
+                        this._pxRect(ctx, x - s * 0.3, y - s * 0.3, s * 0.6, s * 0.6, '#fff');
+                        // $ sign
+                        ctx.fillStyle = '#ffd700';
+                        ctx.font = 'bold 10px Courier New';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('$', x, y - 4.5 * s);
+                        // Flipping coin (width oscillates)
+                        var coinW = Math.abs(Math.cos(age * 3)) * 2 * s;
+                        this._pxRect(ctx, x - coinW / 2, y + 4 * s, coinW, 1.5 * s, '#ffd700');
+                        this._pxRect(ctx, x - coinW / 2 + s * 0.2, y + 4.2 * s, coinW - s * 0.4, s, '#daa520');
+                    } else if (lvl === 2) {
+                        // Lv.2 — Larger vault with columns, bigger coin, interest label
+                        // Glow
+                        ctx.save();
+                        ctx.fillStyle = 'rgba(255,215,0,0.08)';
+                        ctx.beginPath();
+                        ctx.arc(x, y, 7 * s, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                        // Building
+                        this._pxRect(ctx, x - 5 * s, y - 5 * s, 10 * s, 9 * s, '#b8860b');
+                        this._pxRect(ctx, x - 4 * s, y - 4 * s, 8 * s, 7 * s, '#daa520');
+                        this._pxRect(ctx, x - 3 * s, y - 3 * s, 6 * s, 5 * s, '#ffd700');
+                        // Columns on sides
+                        this._pxRect(ctx, x - 5 * s, y - 5 * s, 1 * s, 9 * s, '#daa520');
+                        this._pxRect(ctx, x + 4 * s, y - 5 * s, 1 * s, 9 * s, '#daa520');
+                        this._pxRect(ctx, x - 5 * s, y - 6 * s, 1 * s, 1 * s, '#ffd700');
+                        this._pxRect(ctx, x + 4 * s, y - 6 * s, 1 * s, 1 * s, '#ffd700');
+                        // Vault door
+                        this._pxRect(ctx, x - 2 * s, y - 2 * s, 4 * s, 4 * s, '#b8860b');
+                        this._pxRect(ctx, x - 1 * s, y - 1 * s, 2 * s, 2 * s, '#8b6914');
+                        // Door handle
+                        ctx.save();
+                        ctx.strokeStyle = '#ffd700';
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 1 * s, 0, Math.PI * 2);
+                        ctx.stroke();
+                        ctx.restore();
+                        // Bigger flipping coin
+                        var coinW2 = Math.abs(Math.cos(age * 3)) * 3 * s;
+                        this._pxRect(ctx, x - coinW2 / 2, y + 4.5 * s, coinW2, 2 * s, '#ffd700');
+                        this._pxRect(ctx, x - coinW2 / 2 + s * 0.3, y + 4.8 * s, coinW2 - s * 0.6, 1.2 * s, '#daa520');
+                        // Interest percentage label
+                        ctx.fillStyle = '#ffd700';
+                        ctx.font = 'bold 9px Courier New';
+                        ctx.textAlign = 'center';
+                        ctx.fillText((0.02 * UPGRADE_POWER[2] * 100).toFixed(0) + '%', x, y - 6.5 * s);
+                    } else {
+                        // Lv.3 — Grand temple bank with pillars, coin stack, golden glow
+                        // Golden glow
+                        ctx.save();
+                        ctx.fillStyle = 'rgba(255,215,0,' + (0.1 + Math.sin(age * 2) * 0.06).toFixed(3) + ')';
+                        ctx.beginPath();
+                        ctx.arc(x, y, 9 * s, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                        // Grand building
+                        this._pxRect(ctx, x - 6 * s, y - 6 * s, 12 * s, 11 * s, '#b8860b');
+                        this._pxRect(ctx, x - 5 * s, y - 5 * s, 10 * s, 9 * s, '#daa520');
+                        this._pxRect(ctx, x - 4 * s, y - 4 * s, 8 * s, 7 * s, '#ffd700');
+                        // Roof triangle
+                        this._pxRect(ctx, x - 4 * s, y - 7 * s, 8 * s, 1 * s, '#ffd700');
+                        this._pxRect(ctx, x - 3 * s, y - 8 * s, 6 * s, 1 * s, '#daa520');
+                        this._pxRect(ctx, x - 2 * s, y - 9 * s, 4 * s, 1 * s, '#b8860b');
+                        // Pillars (4)
+                        for (var pi = -2; pi <= 2; pi++) {
+                            if (pi === 0) continue;
+                            this._pxRect(ctx, x + pi * 2 * s - s * 0.4, y - 6 * s, s * 0.8, 10 * s, '#daa520');
+                            this._pxRect(ctx, x + pi * 2 * s - s * 0.6, y - 7 * s, s * 1.2, 1 * s, '#ffd700');
+                        }
+                        // Vault door with pulsing light
+                        this._pxRect(ctx, x - 2 * s, y - 3 * s, 4 * s, 5 * s, '#8b6914');
+                        this._pxRect(ctx, x - 1.5 * s, y - 2.5 * s, 3 * s, 4 * s, '#6b5310');
+                        var vaultPulse = Math.sin(age * 3) * 0.3 + 0.5;
+                        ctx.save();
+                        ctx.fillStyle = 'rgba(255,215,0,' + vaultPulse.toFixed(2) + ')';
+                        ctx.beginPath();
+                        ctx.arc(x, y - s * 0.5, s * 0.8, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                        // Rotating stack of coins
+                        for (var ci = 0; ci < 3; ci++) {
+                            var coinAngle = age * 2 + ci * (Math.PI * 2 / 3);
+                            var coinR = 6 * s;
+                            var cx3 = x + Math.cos(coinAngle) * coinR;
+                            var cy3 = y + Math.sin(coinAngle) * coinR;
+                            var cw3 = Math.abs(Math.cos(age * 3 + ci)) * 1.5 * s;
+                            this._pxRect(ctx, cx3 - cw3 / 2, cy3 - s * 0.5, cw3, s, '#ffd700');
+                        }
+                        // $$$ signs
+                        ctx.fillStyle = '#ffd700';
+                        ctx.font = 'bold 11px Courier New';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('$$$', x, y - 10 * s);
                     }
                     break;
             }
