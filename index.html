@@ -1459,11 +1459,16 @@
             this.drawBackground(ctx, w, h);
             this.drawPixelGrid(ctx, w, h);
 
-            // Connections from nodes to factory
+            // Connections: MST chain linking all nodes to factory
             var fX = w / 2;
             var fY = h / 2;
-            for (var i = 0; i < this.nodes.length; i++) {
-                this.drawPixelConnection(ctx, this.nodes[i].x, this.nodes[i].y, fX, fY, this.nodes[i].type);
+            var edges = this.computeConnectionEdges();
+            for (var i = 0; i < edges.length; i++) {
+                var e = edges[i];
+                // Determine type from the "from" node for coloring
+                var nodeIdx = e.from.idx;
+                var edgeType = (nodeIdx >= 0 && this.nodes[nodeIdx]) ? this.nodes[nodeIdx].type : 'collector';
+                this.drawPixelConnection(ctx, e.from.x, e.from.y, e.to.x, e.to.y, edgeType);
             }
 
             // Factory
@@ -1508,12 +1513,158 @@
                 }
             }
 
+            // Placement ghost preview at mouse cursor
+            this.drawPlacementPreview(ctx, fX, fY);
+
             // Effects
             this.drawParticles(ctx);
             this.drawPixelSpectators(ctx, w, h);
             this.drawComboDisplay(ctx, w, h);
             this.drawFloatingTexts(ctx);
             this.drawScanlines(ctx, w, h);
+
+            ctx.restore();
+        };
+
+        // =========================================================
+        // DRAWING - PLACEMENT GHOST PREVIEW
+        // =========================================================
+
+        OKRFarmingGame.prototype.drawPlacementPreview = function(ctx, factoryX, factoryY) {
+            if (!this.running || !this.state) return;
+            var mx = this.mouseX;
+            var my = this.mouseY;
+            if (mx <= 0 && my <= 0) return;
+
+            // Check if mouse is over UI elements (right side panels, top-left stats, etc.)
+            // Skip preview if mouse is far off-canvas or at 0,0
+            if (mx < 1 || my < 1 || mx > this.canvas.width - 1 || my > this.canvas.height - 1) return;
+
+            var hitRadius = 25;
+            var type = this.selectedBuilding;
+            var b = BUILDINGS[type];
+            if (!b) return;
+
+            // Determine placement state
+            var overExistingNode = false;
+            var overlappedNode = null;
+            for (var i = 0; i < this.nodes.length; i++) {
+                var n = this.nodes[i];
+                var dx = mx - n.x, dy = my - n.y;
+                if (Math.sqrt(dx * dx + dy * dy) < hitRadius) {
+                    overExistingNode = true;
+                    overlappedNode = n;
+                    break;
+                }
+            }
+
+            var distToFactory = Math.sqrt((mx - factoryX) * (mx - factoryX) + (my - factoryY) * (my - factoryY));
+            var tooCloseToFactory = distToFactory < 60;
+            var canAfford = this.state.currencies.ac >= b.cost;
+
+            // Choose color based on state
+            var ringColor, ghostAlpha;
+            if (overExistingNode) {
+                // Upgrade mode - show gold ring
+                ringColor = 'rgba(255, 215, 0, 0.6)';
+                ghostAlpha = 0.0; // don't draw ghost building, show upgrade indicator instead
+            } else if (tooCloseToFactory) {
+                ringColor = 'rgba(255, 60, 60, 0.5)';
+                ghostAlpha = 0.2;
+            } else if (!canAfford) {
+                ringColor = 'rgba(255, 60, 60, 0.4)';
+                ghostAlpha = 0.2;
+            } else {
+                ringColor = 'rgba(0, 255, 255, 0.4)';
+                ghostAlpha = 0.35;
+            }
+
+            ctx.save();
+
+            // Draw hitbox circle
+            ctx.strokeStyle = ringColor;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.arc(mx, my, hitRadius, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            if (overExistingNode && overlappedNode) {
+                // Upgrade indicator - pulsing gold highlight around the existing node
+                var lvl = overlappedNode.level || 1;
+                var pulse = Math.sin(Date.now() * 0.005) * 0.15 + 0.5;
+                ctx.strokeStyle = 'rgba(255, 215, 0, ' + pulse.toFixed(2) + ')';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(overlappedNode.x, overlappedNode.y, hitRadius + 4, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Show upgrade info
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+                ctx.strokeStyle = '#ffd700';
+                ctx.lineWidth = 1;
+                ctx.font = 'bold 11px Courier New';
+                ctx.textAlign = 'center';
+                if (lvl >= 3) {
+                    var txt = '★★★ MAX LEVEL';
+                    var tw = ctx.measureText(txt).width;
+                    ctx.fillRect(mx - tw / 2 - 8, my - hitRadius - 28, tw + 16, 20);
+                    ctx.strokeRect(mx - tw / 2 - 8, my - hitRadius - 28, tw + 16, 20);
+                    ctx.fillStyle = '#ffd700';
+                    ctx.fillText(txt, mx, my - hitRadius - 13);
+                } else {
+                    var nextLvl = lvl + 1;
+                    var cost = Math.floor(BUILDINGS[overlappedNode.type].cost * UPGRADE_COSTS[nextLvl]);
+                    var txt = 'UPGRADE → Lv.' + nextLvl + ' (' + cost + ' AC)';
+                    var tw = ctx.measureText(txt).width;
+                    ctx.fillRect(mx - tw / 2 - 8, my - hitRadius - 28, tw + 16, 20);
+                    ctx.strokeRect(mx - tw / 2 - 8, my - hitRadius - 28, tw + 16, 20);
+                    ctx.fillStyle = this.state.currencies.ac >= cost ? '#0f0' : '#f44';
+                    ctx.fillText(txt, mx, my - hitRadius - 13);
+                }
+            } else {
+                // Draw ghost building preview
+                ctx.globalAlpha = ghostAlpha;
+                var ghostNode = { type: type, x: mx, y: my, age: Date.now() / 1000, level: 1 };
+                this.drawPixelNode(ctx, ghostNode);
+                ctx.globalAlpha = 1.0;
+
+                // Connection preview - show where this node would chain to
+                if (!tooCloseToFactory && canAfford) {
+                    var ghostEdges = this.computeConnectionEdges({ x: mx, y: my });
+                    ctx.setLineDash([6, 6]);
+                    ctx.lineWidth = 1;
+                    for (var gi = 0; gi < ghostEdges.length; gi++) {
+                        var ge = ghostEdges[gi];
+                        // Highlight the ghost node's own edge brighter
+                        if (ge.from.idx === -2 || ge.to.idx === -2) {
+                            ctx.strokeStyle = 'rgba(0, 255, 255, 0.4)';
+                        } else {
+                            ctx.strokeStyle = 'rgba(0, 255, 255, 0.08)';
+                        }
+                        ctx.beginPath();
+                        ctx.moveTo(ge.from.x, ge.from.y);
+                        ctx.lineTo(ge.to.x, ge.to.y);
+                        ctx.stroke();
+                    }
+                    ctx.setLineDash([]);
+                }
+
+                // Status text
+                ctx.font = 'bold 10px Courier New';
+                ctx.textAlign = 'center';
+                if (tooCloseToFactory) {
+                    ctx.fillStyle = '#f66';
+                    ctx.fillText('Too close to factory!', mx, my + 35);
+                } else if (!canAfford) {
+                    ctx.fillStyle = '#f66';
+                    ctx.fillText('Need ' + b.cost + ' AC', mx, my + 35);
+                } else {
+                    ctx.fillStyle = 'rgba(0, 255, 255, 0.7)';
+                    ctx.fillText('Click to place ' + b.name, mx, my + 35);
+                }
+            }
 
             ctx.restore();
         };
@@ -1544,6 +1695,82 @@
                 ctx.fillStyle = BG_OVERLAYS[this.state.currentLevel] || BG_OVERLAYS[1];
                 ctx.fillRect(0, 0, w, h);
             }
+        };
+
+        // =========================================================
+        // MST CONNECTION EDGES
+        // =========================================================
+
+        OKRFarmingGame.prototype.computeConnectionEdges = function(extraNode) {
+            // Build MST (Prim's) connecting all nodes to factory
+            // extraNode is optional - a temporary node for ghost preview
+            var fX = this.canvas.width / 2;
+            var fY = this.canvas.height / 2;
+
+            // Collect all points: factory (index 0) + all nodes + optional extra
+            var points = [{ x: fX, y: fY, idx: -1 }]; // factory
+            for (var i = 0; i < this.nodes.length; i++) {
+                points.push({ x: this.nodes[i].x, y: this.nodes[i].y, idx: i });
+            }
+            if (extraNode) {
+                points.push({ x: extraNode.x, y: extraNode.y, idx: -2 }); // ghost
+            }
+
+            if (points.length < 2) return [];
+
+            // Prim's MST
+            var inTree = new Array(points.length);
+            var minDist = new Array(points.length);
+            var minEdge = new Array(points.length);
+            for (var i = 0; i < points.length; i++) {
+                inTree[i] = false;
+                minDist[i] = Infinity;
+                minEdge[i] = -1;
+            }
+
+            // Start from factory (index 0)
+            inTree[0] = true;
+            for (var j = 1; j < points.length; j++) {
+                var dx = points[j].x - points[0].x;
+                var dy = points[j].y - points[0].y;
+                minDist[j] = Math.sqrt(dx * dx + dy * dy);
+                minEdge[j] = 0;
+            }
+
+            var edges = [];
+            for (var step = 1; step < points.length; step++) {
+                // Find closest point not yet in tree
+                var best = -1;
+                var bestDist = Infinity;
+                for (var j = 1; j < points.length; j++) {
+                    if (!inTree[j] && minDist[j] < bestDist) {
+                        bestDist = minDist[j];
+                        best = j;
+                    }
+                }
+                if (best === -1) break;
+
+                inTree[best] = true;
+                edges.push({
+                    from: points[best],
+                    to: points[minEdge[best]]
+                });
+
+                // Update distances for remaining points
+                for (var j = 1; j < points.length; j++) {
+                    if (!inTree[j]) {
+                        var dx = points[j].x - points[best].x;
+                        var dy = points[j].y - points[best].y;
+                        var d = Math.sqrt(dx * dx + dy * dy);
+                        if (d < minDist[j]) {
+                            minDist[j] = d;
+                            minEdge[j] = best;
+                        }
+                    }
+                }
+            }
+
+            return edges;
         };
 
         // =========================================================
@@ -1664,7 +1891,7 @@
         OKRFarmingGame.prototype.drawPixelNode = function(ctx, node) {
             var baseS = 3;
             var lvl = node.level || 1;
-            var s = baseS + (lvl - 1); // level 1 = 3, level 2 = 4, level 3 = 5
+            var s = baseS + (lvl - 1);
             var x = node.x;
             var y = node.y;
             var age = node.age || 0;
@@ -1672,120 +1899,478 @@
 
             switch (node.type) {
                 case 'collector':
-                    // Green funnel shape
-                    this._pxRect(ctx, x - 4 * s, y - 5 * s, 8 * s, 1 * s, '#1b5e20');
-                    this._pxRect(ctx, x - 3 * s, y - 4 * s, 6 * s, 1 * s, '#2e7d32');
-                    this._pxRect(ctx, x - 2 * s, y - 3 * s, 4 * s, 1 * s, '#388e3c');
-                    this._pxRect(ctx, x - 1 * s, y - 2 * s, 2 * s, 3 * s, '#4caf50');
-                    this._pxRect(ctx, x - 1 * s, y + 1 * s, 2 * s, 2 * s, '#2e7d32');
-                    // Base
-                    this._pxRect(ctx, x - 2 * s, y + 3 * s, 4 * s, 1 * s, '#1b5e20');
-                    // Spinning collection dot
-                    var ang = age * 2.5;
-                    var dotX = x + Math.cos(ang) * 3.5 * s;
-                    var dotY = y - 1 * s + Math.sin(ang) * 2 * s;
-                    this._pxRect(ctx, dotX - s / 2, dotY - s / 2, s, s, 'rgba(0, 255, 0, ' + pulse.toFixed(2) + ')');
-                    // AC label
-                    ctx.fillStyle = 'rgba(255, 255, 0, 0.6)';
-                    ctx.font = '8px Courier New';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('AC', x, y - 6 * s);
+                    if (lvl === 1) {
+                        // Lv.1 — small green funnel
+                        this._pxRect(ctx, x - 4 * s, y - 5 * s, 8 * s, 1 * s, '#1b5e20');
+                        this._pxRect(ctx, x - 3 * s, y - 4 * s, 6 * s, 1 * s, '#2e7d32');
+                        this._pxRect(ctx, x - 2 * s, y - 3 * s, 4 * s, 1 * s, '#388e3c');
+                        this._pxRect(ctx, x - 1 * s, y - 2 * s, 2 * s, 3 * s, '#4caf50');
+                        this._pxRect(ctx, x - 1 * s, y + 1 * s, 2 * s, 2 * s, '#2e7d32');
+                        this._pxRect(ctx, x - 2 * s, y + 3 * s, 4 * s, 1 * s, '#1b5e20');
+                        // Single spinning dot
+                        var ca1 = age * 2.5;
+                        var cd1x = x + Math.cos(ca1) * 3.5 * s;
+                        var cd1y = y - 1 * s + Math.sin(ca1) * 2 * s;
+                        this._pxRect(ctx, cd1x - s / 2, cd1y - s / 2, s, s, 'rgba(0,255,0,' + pulse.toFixed(2) + ')');
+                    } else if (lvl === 2) {
+                        // Lv.2 — wider funnel with side collectors
+                        // Glow circle behind
+                        ctx.save();
+                        ctx.fillStyle = 'rgba(102,187,106,0.12)';
+                        ctx.beginPath();
+                        ctx.arc(x, y, 6 * s, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                        // Wider funnel
+                        this._pxRect(ctx, x - 5 * s, y - 6 * s, 10 * s, 1 * s, '#2e7d32');
+                        this._pxRect(ctx, x - 4 * s, y - 5 * s, 8 * s, 1 * s, '#43a047');
+                        this._pxRect(ctx, x - 3 * s, y - 4 * s, 6 * s, 1 * s, '#66bb6a');
+                        this._pxRect(ctx, x - 2 * s, y - 3 * s, 4 * s, 1 * s, '#81c784');
+                        this._pxRect(ctx, x - 1 * s, y - 2 * s, 2 * s, 4 * s, '#66bb6a');
+                        this._pxRect(ctx, x - 1 * s, y + 2 * s, 2 * s, 2 * s, '#43a047');
+                        this._pxRect(ctx, x - 3 * s, y + 4 * s, 6 * s, 1 * s, '#2e7d32');
+                        // Side antenna arms
+                        this._pxRect(ctx, x - 6 * s, y - 4 * s, 1 * s, 3 * s, '#81c784');
+                        this._pxRect(ctx, x + 5 * s, y - 4 * s, 1 * s, 3 * s, '#81c784');
+                        this._pxRect(ctx, x - 7 * s, y - 5 * s, 1 * s, 1 * s, '#66bb6a');
+                        this._pxRect(ctx, x + 6 * s, y - 5 * s, 1 * s, 1 * s, '#66bb6a');
+                        // Two spinning dots (opposite directions)
+                        var ca2a = age * 2.5;
+                        var ca2b = age * 2.5 + Math.PI;
+                        var cr2 = 4 * s;
+                        this._pxRect(ctx, x + Math.cos(ca2a) * cr2 - s / 2, y + Math.sin(ca2a) * cr2 - s / 2, s, s, 'rgba(129,199,132,' + pulse.toFixed(2) + ')');
+                        this._pxRect(ctx, x + Math.cos(ca2b) * cr2 - s / 2, y + Math.sin(ca2b) * cr2 - s / 2, s, s, 'rgba(102,187,106,' + pulse.toFixed(2) + ')');
+                    } else {
+                        // Lv.3 — golden mega-hopper with satellite dishes
+                        // Pulsing glow halo
+                        ctx.save();
+                        ctx.fillStyle = 'rgba(255,215,0,' + (0.08 + Math.sin(age * 2) * 0.05).toFixed(3) + ')';
+                        ctx.beginPath();
+                        ctx.arc(x, y, 8 * s, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                        // Inner rotating energy ring
+                        ctx.save();
+                        ctx.strokeStyle = 'rgba(255,215,0,0.3)';
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 5 * s, age * 1.5, age * 1.5 + Math.PI * 1.2);
+                        ctx.stroke();
+                        ctx.restore();
+                        // Massive golden funnel
+                        this._pxRect(ctx, x - 6 * s, y - 7 * s, 12 * s, 1 * s, '#ffd700');
+                        this._pxRect(ctx, x - 5 * s, y - 6 * s, 10 * s, 1 * s, '#2e7d32');
+                        this._pxRect(ctx, x - 4 * s, y - 5 * s, 8 * s, 1 * s, '#43a047');
+                        this._pxRect(ctx, x - 3 * s, y - 4 * s, 6 * s, 1 * s, '#66bb6a');
+                        this._pxRect(ctx, x - 2 * s, y - 3 * s, 4 * s, 2 * s, '#81c784');
+                        this._pxRect(ctx, x - 1 * s, y - 1 * s, 2 * s, 4 * s, '#66bb6a');
+                        this._pxRect(ctx, x - 2 * s, y + 3 * s, 4 * s, 1 * s, '#43a047');
+                        this._pxRect(ctx, x - 3 * s, y + 4 * s, 6 * s, 1 * s, '#ffd700');
+                        // Gold rim highlights
+                        this._pxRect(ctx, x - 6 * s, y - 7 * s, 1 * s, 1 * s, '#ffab00');
+                        this._pxRect(ctx, x + 5 * s, y - 7 * s, 1 * s, 1 * s, '#ffab00');
+                        // Satellite dishes
+                        this._pxRect(ctx, x - 8 * s, y - 5 * s, 2 * s, 1 * s, '#ffd700');
+                        this._pxRect(ctx, x - 8 * s, y - 4 * s, 1 * s, 2 * s, '#ffab00');
+                        this._pxRect(ctx, x + 6 * s, y - 5 * s, 2 * s, 1 * s, '#ffd700');
+                        this._pxRect(ctx, x + 7 * s, y - 4 * s, 1 * s, 2 * s, '#ffab00');
+                        // Three orbiting gold dots
+                        for (var ci = 0; ci < 3; ci++) {
+                            var ca3 = age * 2.2 + ci * (Math.PI * 2 / 3);
+                            var cr3 = 5.5 * s;
+                            this._pxRect(ctx, x + Math.cos(ca3) * cr3 - s / 2, y + Math.sin(ca3) * cr3 - s / 2, s, s, '#ffd700');
+                        }
+                    }
                     break;
 
                 case 'processor':
-                    // Blue microchip
-                    this._pxRect(ctx, x - 3 * s, y - 3 * s, 6 * s, 6 * s, '#0d47a1');
-                    this._pxRect(ctx, x - 2 * s, y - 2 * s, 4 * s, 4 * s, '#1565c0');
-                    // Inner circuit pattern
-                    this._pxRect(ctx, x - 1 * s, y - 1 * s, 2 * s, 2 * s, '#1e88e5');
-                    // Pins (all four sides)
-                    this._pxRect(ctx, x - 4 * s, y - 2 * s, 1 * s, 1 * s, '#64b5f6');
-                    this._pxRect(ctx, x - 4 * s, y + 1 * s, 1 * s, 1 * s, '#64b5f6');
-                    this._pxRect(ctx, x + 3 * s, y - 2 * s, 1 * s, 1 * s, '#64b5f6');
-                    this._pxRect(ctx, x + 3 * s, y + 1 * s, 1 * s, 1 * s, '#64b5f6');
-                    this._pxRect(ctx, x - 2 * s, y - 4 * s, 1 * s, 1 * s, '#64b5f6');
-                    this._pxRect(ctx, x + 1 * s, y - 4 * s, 1 * s, 1 * s, '#64b5f6');
-                    this._pxRect(ctx, x - 2 * s, y + 3 * s, 1 * s, 1 * s, '#64b5f6');
-                    this._pxRect(ctx, x + 1 * s, y + 3 * s, 1 * s, 1 * s, '#64b5f6');
-                    // Center LED glow
-                    this._pxRect(ctx, x - s / 2, y - s / 2, s, s, 'rgba(100, 181, 246, ' + pulse.toFixed(2) + ')');
+                    if (lvl === 1) {
+                        // Lv.1 — simple blue chip with 8 pins
+                        this._pxRect(ctx, x - 3 * s, y - 3 * s, 6 * s, 6 * s, '#0d47a1');
+                        this._pxRect(ctx, x - 2 * s, y - 2 * s, 4 * s, 4 * s, '#1565c0');
+                        this._pxRect(ctx, x - 1 * s, y - 1 * s, 2 * s, 2 * s, '#1e88e5');
+                        // 8 pins
+                        this._pxRect(ctx, x - 4 * s, y - 2 * s, 1 * s, 1 * s, '#64b5f6');
+                        this._pxRect(ctx, x - 4 * s, y + 1 * s, 1 * s, 1 * s, '#64b5f6');
+                        this._pxRect(ctx, x + 3 * s, y - 2 * s, 1 * s, 1 * s, '#64b5f6');
+                        this._pxRect(ctx, x + 3 * s, y + 1 * s, 1 * s, 1 * s, '#64b5f6');
+                        this._pxRect(ctx, x - 2 * s, y - 4 * s, 1 * s, 1 * s, '#64b5f6');
+                        this._pxRect(ctx, x + 1 * s, y - 4 * s, 1 * s, 1 * s, '#64b5f6');
+                        this._pxRect(ctx, x - 2 * s, y + 3 * s, 1 * s, 1 * s, '#64b5f6');
+                        this._pxRect(ctx, x + 1 * s, y + 3 * s, 1 * s, 1 * s, '#64b5f6');
+                        // Single center LED
+                        this._pxRect(ctx, x - s / 2, y - s / 2, s, s, 'rgba(100,181,246,' + pulse.toFixed(2) + ')');
+                    } else if (lvl === 2) {
+                        // Lv.2 — larger chip with 12 pins, heat sink, circuit traces
+                        this._pxRect(ctx, x - 4 * s, y - 4 * s, 8 * s, 8 * s, '#0d47a1');
+                        this._pxRect(ctx, x - 3 * s, y - 3 * s, 6 * s, 6 * s, '#1565c0');
+                        this._pxRect(ctx, x - 2 * s, y - 2 * s, 4 * s, 4 * s, '#1e88e5');
+                        // Circuit traces inside
+                        this._pxRect(ctx, x - 2 * s, y, 4 * s, s * 0.5, '#64b5f6');
+                        this._pxRect(ctx, x, y - 2 * s, s * 0.5, 4 * s, '#64b5f6');
+                        this._pxRect(ctx, x - 1 * s, y - 1 * s, 1 * s, s * 0.5, '#90caf9');
+                        this._pxRect(ctx, x + s * 0.5, y + s * 0.5, 1 * s, s * 0.5, '#90caf9');
+                        // 12 pins (3 per side)
+                        for (var pi2 = -2; pi2 <= 2; pi2++) {
+                            if (pi2 === 0) continue;
+                            this._pxRect(ctx, x - 5 * s, y + pi2 * s, 1 * s, s * 0.7, '#64b5f6');
+                            this._pxRect(ctx, x + 4 * s, y + pi2 * s, 1 * s, s * 0.7, '#64b5f6');
+                            this._pxRect(ctx, x + pi2 * s, y - 5 * s, s * 0.7, 1 * s, '#64b5f6');
+                            this._pxRect(ctx, x + pi2 * s, y + 4 * s, s * 0.7, 1 * s, '#64b5f6');
+                        }
+                        // Heat sink fins on top
+                        for (var hf = -2; hf <= 2; hf++) {
+                            this._pxRect(ctx, x + hf * s, y - 6 * s, s * 0.5, 1 * s, '#b0bec5');
+                        }
+                        // Two blinking LEDs
+                        var pLed2 = Math.sin(age * 4) > 0 ? 1.0 : 0.3;
+                        this._pxRect(ctx, x - s, y - s / 2, s * 0.7, s * 0.7, 'rgba(100,181,246,' + pLed2.toFixed(2) + ')');
+                        this._pxRect(ctx, x + s * 0.3, y - s / 2, s * 0.7, s * 0.7, 'rgba(255,255,255,' + (1 - pLed2).toFixed(2) + ')');
+                    } else {
+                        // Lv.3 — quantum computer: stacked layers, holographic pattern, data particles
+                        // Blue glow behind
+                        ctx.save();
+                        ctx.fillStyle = 'rgba(30,136,229,' + (0.08 + Math.sin(age * 2) * 0.04).toFixed(3) + ')';
+                        ctx.beginPath();
+                        ctx.arc(x, y, 7 * s, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                        // Stacked layers (3D effect)
+                        this._pxRect(ctx, x - 4 * s, y - 5 * s + s, 8 * s, 8 * s, '#0a3370');
+                        this._pxRect(ctx, x - 4 * s, y - 5 * s, 8 * s, 8 * s, '#0d47a1');
+                        this._pxRect(ctx, x - 3 * s, y - 4 * s, 6 * s, 6 * s, '#1565c0');
+                        this._pxRect(ctx, x - 2 * s, y - 3 * s, 4 * s, 4 * s, '#1e88e5');
+                        // Holographic inner pattern
+                        for (var hx = -1; hx <= 1; hx++) {
+                            for (var hy = -1; hy <= 1; hy++) {
+                                var hBright = Math.sin(age * 5 + hx * 2 + hy * 3) > 0;
+                                if (hBright) {
+                                    this._pxRect(ctx, x + hx * s - s * 0.3, y - s + hy * s - s * 0.3, s * 0.6, s * 0.6, '#e3f2fd');
+                                }
+                            }
+                        }
+                        // White core
+                        this._pxRect(ctx, x - s * 0.5, y - s - s * 0.5, s, s, 'rgba(255,255,255,' + pulse.toFixed(2) + ')');
+                        // 16 pins (4 per side)
+                        for (var pi3 = -3; pi3 <= 3; pi3++) {
+                            if (pi3 === 0) continue;
+                            this._pxRect(ctx, x - 5 * s, y - s + pi3 * s * 0.8, 1 * s, s * 0.5, '#64b5f6');
+                            this._pxRect(ctx, x + 4 * s, y - s + pi3 * s * 0.8, 1 * s, s * 0.5, '#64b5f6');
+                            this._pxRect(ctx, x + pi3 * s * 0.8, y - 6 * s, s * 0.5, 1 * s, '#64b5f6');
+                            this._pxRect(ctx, x + pi3 * s * 0.8, y + 3 * s, s * 0.5, 1 * s, '#64b5f6');
+                        }
+                        // Orbiting data particles (cyan dots)
+                        for (var dp = 0; dp < 4; dp++) {
+                            var da3 = age * 3 + dp * (Math.PI / 2);
+                            var dr3 = 5.5 * s;
+                            this._pxRect(ctx, x + Math.cos(da3) * dr3 - s * 0.3, y - s + Math.sin(da3) * dr3 - s * 0.3, s * 0.6, s * 0.6, '#00e5ff');
+                        }
+                        // Electric arc effects
+                        if (Math.sin(age * 8) > 0.6) {
+                            var arcOff = Math.sin(age * 13) * 2 * s;
+                            this._pxRect(ctx, x + arcOff - s * 0.3, y - 4 * s, s * 0.6, 2 * s, 'rgba(144,202,249,0.7)');
+                        }
+                        if (Math.sin(age * 8 + 1.5) > 0.6) {
+                            var arcOff2 = Math.cos(age * 11) * 2 * s;
+                            this._pxRect(ctx, x - 3 * s, y - s + arcOff2 - s * 0.3, 2 * s, s * 0.6, 'rgba(144,202,249,0.7)');
+                        }
+                    }
                     break;
 
                 case 'multiplier':
-                    // Purple diamond/crystal
-                    this._pxRect(ctx, x - 1 * s, y - 5 * s, 2 * s, 1 * s, '#4a148c');
-                    this._pxRect(ctx, x - 2 * s, y - 4 * s, 4 * s, 1 * s, '#6a1b9a');
-                    this._pxRect(ctx, x - 3 * s, y - 3 * s, 6 * s, 2 * s, '#8e24aa');
-                    this._pxRect(ctx, x - 3 * s, y - 1 * s, 6 * s, 2 * s, '#ab47bc');
-                    this._pxRect(ctx, x - 2 * s, y + 1 * s, 4 * s, 2 * s, '#8e24aa');
-                    this._pxRect(ctx, x - 1 * s, y + 3 * s, 2 * s, 1 * s, '#6a1b9a');
-                    // Sparkle effect
-                    if (Math.sin(age * 5) > 0.3) {
-                        this._pxRect(ctx, x - s, y - 3 * s, s, s, '#fff');
+                    if (lvl === 1) {
+                        // Lv.1 — small purple crystal
+                        this._pxRect(ctx, x - 1 * s, y - 5 * s, 2 * s, 1 * s, '#4a148c');
+                        this._pxRect(ctx, x - 2 * s, y - 4 * s, 4 * s, 1 * s, '#6a1b9a');
+                        this._pxRect(ctx, x - 3 * s, y - 3 * s, 6 * s, 2 * s, '#8e24aa');
+                        this._pxRect(ctx, x - 3 * s, y - 1 * s, 6 * s, 2 * s, '#ab47bc');
+                        this._pxRect(ctx, x - 2 * s, y + 1 * s, 4 * s, 2 * s, '#8e24aa');
+                        this._pxRect(ctx, x - 1 * s, y + 3 * s, 2 * s, 1 * s, '#6a1b9a');
+                        // Occasional sparkle
+                        if (Math.sin(age * 5) > 0.3) {
+                            this._pxRect(ctx, x - s, y - 3 * s, s, s, '#fff');
+                        }
+                        if (Math.sin(age * 5 + 2) > 0.3) {
+                            this._pxRect(ctx, x + s, y + s, s, s, '#eee');
+                        }
+                        ctx.fillStyle = 'rgba(206,147,255,0.7)';
+                        ctx.font = 'bold 9px Courier New';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('x' + UPGRADE_POWER[1].toFixed(1), x, y - 6 * s);
+                    } else if (lvl === 2) {
+                        // Lv.2 — taller crystal with facets, satellite crystals
+                        // Taller layered diamond
+                        this._pxRect(ctx, x - 1 * s, y - 7 * s, 2 * s, 1 * s, '#6a1b9a');
+                        this._pxRect(ctx, x - 2 * s, y - 6 * s, 4 * s, 1 * s, '#8e24aa');
+                        this._pxRect(ctx, x - 3 * s, y - 5 * s, 6 * s, 1 * s, '#ab47bc');
+                        this._pxRect(ctx, x - 4 * s, y - 4 * s, 8 * s, 2 * s, '#ce93d8');
+                        this._pxRect(ctx, x - 4 * s, y - 2 * s, 8 * s, 2 * s, '#ab47bc');
+                        this._pxRect(ctx, x - 3 * s, y, 6 * s, 2 * s, '#8e24aa');
+                        this._pxRect(ctx, x - 2 * s, y + 2 * s, 4 * s, 1 * s, '#6a1b9a');
+                        this._pxRect(ctx, x - 1 * s, y + 3 * s, 2 * s, 1 * s, '#4a148c');
+                        // Internal light refraction
+                        var refHue = ((age * 40) % 360);
+                        this._pxRect(ctx, x - s * 0.5, y - 2 * s, s, s, 'hsl(' + refHue + ',80%,70%)');
+                        // Multiple sparkles
+                        for (var ms2 = 0; ms2 < 4; ms2++) {
+                            if (Math.sin(age * 6 + ms2 * 1.7) > 0.2) {
+                                var sx2 = x + Math.cos(ms2 * 2.3) * 2.5 * s;
+                                var sy2 = y - s + Math.sin(ms2 * 1.8) * 3 * s;
+                                this._pxRect(ctx, sx2 - s * 0.3, sy2 - s * 0.3, s * 0.6, s * 0.6, '#fff');
+                            }
+                        }
+                        // Satellite crystals
+                        var sat2a = age * 1.5;
+                        var sat2r = 6 * s;
+                        for (var sc2 = 0; sc2 < 2; sc2++) {
+                            var sca = sat2a + sc2 * Math.PI;
+                            var scx = x + Math.cos(sca) * sat2r;
+                            var scy = y + Math.sin(sca) * sat2r;
+                            this._pxRect(ctx, scx - s * 0.5, scy - s, s, s * 0.5, '#ce93d8');
+                            this._pxRect(ctx, scx - s * 0.3, scy - s * 0.5, s * 0.6, s, '#ab47bc');
+                            this._pxRect(ctx, scx - s * 0.5, scy + s * 0.5, s, s * 0.5, '#ce93d8');
+                        }
+                        ctx.fillStyle = 'rgba(206,147,255,0.8)';
+                        ctx.font = 'bold 9px Courier New';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('x' + UPGRADE_POWER[2].toFixed(1), x, y - 8 * s);
+                    } else {
+                        // Lv.3 — cosmic prism with rainbow prismatic effect
+                        // Rainbow color cycling facets
+                        var prismHue = (age * 60) % 360;
+                        var prismC1 = 'hsl(' + prismHue + ',80%,60%)';
+                        var prismC2 = 'hsl(' + ((prismHue + 60) % 360) + ',80%,60%)';
+                        var prismC3 = 'hsl(' + ((prismHue + 120) % 360) + ',80%,60%)';
+                        var prismC4 = 'hsl(' + ((prismHue + 180) % 360) + ',80%,65%)';
+                        // Huge crystal
+                        this._pxRect(ctx, x - 1 * s, y - 8 * s, 2 * s, 1 * s, '#6a1b9a');
+                        this._pxRect(ctx, x - 2 * s, y - 7 * s, 4 * s, 1 * s, prismC1);
+                        this._pxRect(ctx, x - 3 * s, y - 6 * s, 6 * s, 1 * s, prismC2);
+                        this._pxRect(ctx, x - 4 * s, y - 5 * s, 8 * s, 2 * s, prismC3);
+                        this._pxRect(ctx, x - 5 * s, y - 3 * s, 10 * s, 2 * s, prismC4);
+                        this._pxRect(ctx, x - 5 * s, y - 1 * s, 10 * s, 2 * s, prismC3);
+                        this._pxRect(ctx, x - 4 * s, y + 1 * s, 8 * s, 2 * s, prismC2);
+                        this._pxRect(ctx, x - 3 * s, y + 3 * s, 6 * s, 1 * s, prismC1);
+                        this._pxRect(ctx, x - 2 * s, y + 4 * s, 4 * s, 1 * s, '#6a1b9a');
+                        this._pxRect(ctx, x - 1 * s, y + 5 * s, 2 * s, 1 * s, '#4a148c');
+                        // Bright white center core
+                        this._pxRect(ctx, x - s, y - s, 2 * s, 2 * s, 'rgba(255,255,255,' + pulse.toFixed(2) + ')');
+                        // 4 orbiting mini-crystals
+                        for (var mc3 = 0; mc3 < 4; mc3++) {
+                            var mca = age * 1.8 + mc3 * (Math.PI / 2);
+                            var mcr = 7 * s;
+                            var mcx = x + Math.cos(mca) * mcr;
+                            var mcy = y + Math.sin(mca) * mcr;
+                            var mcH = 'hsl(' + ((prismHue + mc3 * 90) % 360) + ',80%,65%)';
+                            this._pxRect(ctx, mcx - s * 0.3, mcy - s, s * 0.6, s * 0.5, mcH);
+                            this._pxRect(ctx, mcx - s * 0.5, mcy - s * 0.5, s, s, mcH);
+                            this._pxRect(ctx, mcx - s * 0.3, mcy + s * 0.5, s * 0.6, s * 0.5, mcH);
+                        }
+                        // Constant sparkle shower
+                        for (var sp3 = 0; sp3 < 6; sp3++) {
+                            if (Math.sin(age * 7 + sp3 * 1.1) > 0.0) {
+                                var spx = x + Math.cos(sp3 * 3.7 + age) * 4 * s;
+                                var spy = y + Math.sin(sp3 * 2.9 + age * 1.3) * 5 * s;
+                                this._pxRect(ctx, spx - s * 0.2, spy - s * 0.2, s * 0.5, s * 0.5, '#fff');
+                            }
+                        }
+                        ctx.fillStyle = '#ffd700';
+                        ctx.font = 'bold 10px Courier New';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('x' + UPGRADE_POWER[3].toFixed(1), x, y - 9 * s);
                     }
-                    if (Math.sin(age * 5 + 2) > 0.3) {
-                        this._pxRect(ctx, x + s, y + s, s, s, '#eee');
-                    }
-                    // x1.5 label
-                    ctx.fillStyle = 'rgba(206, 147, 255, 0.7)';
-                    ctx.font = 'bold 9px Courier New';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('x1.5', x, y - 6 * s);
                     break;
 
                 case 'synthesizer':
-                    // Red reactor with containment ring
-                    this._pxRect(ctx, x - 4 * s, y - 4 * s, 8 * s, 8 * s, '#7f0000');
-                    this._pxRect(ctx, x - 3 * s, y - 3 * s, 6 * s, 6 * s, '#b71c1c');
-                    this._pxRect(ctx, x - 2 * s, y - 2 * s, 4 * s, 4 * s, '#e53935');
-                    // Reactor core (pulsing)
-                    var rp = Math.sin(age * 4) * 0.3 + 0.7;
-                    this._pxRect(ctx, x - 1 * s, y - 1 * s, 2 * s, 2 * s, 'rgba(255, 235, 59, ' + rp.toFixed(2) + ')');
-                    // Vents
-                    this._pxRect(ctx, x - 5 * s, y - 1 * s, 1 * s, 2 * s, '#ff5252');
-                    this._pxRect(ctx, x + 4 * s, y - 1 * s, 1 * s, 2 * s, '#ff5252');
-                    this._pxRect(ctx, x - 1 * s, y - 5 * s, 2 * s, 1 * s, '#ff5252');
-                    this._pxRect(ctx, x - 1 * s, y + 4 * s, 2 * s, 1 * s, '#ff5252');
-                    // Containment ring
-                    ctx.strokeStyle = 'rgba(255, 82, 82, ' + (0.3 + rp * 0.3).toFixed(2) + ')';
-                    ctx.lineWidth = 1;
-                    ctx.beginPath();
-                    ctx.arc(x, y, 5 * s, 0, Math.PI * 2);
-                    ctx.stroke();
-                    // Warning symbol
-                    ctx.fillStyle = 'rgba(255, 200, 0, 0.5)';
-                    ctx.font = 'bold 8px Courier New';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('!!!', x, y - 6 * s);
+                    if (lvl === 1) {
+                        // Lv.1 — red reactor with pulsing core
+                        this._pxRect(ctx, x - 4 * s, y - 4 * s, 8 * s, 8 * s, '#7f0000');
+                        this._pxRect(ctx, x - 3 * s, y - 3 * s, 6 * s, 6 * s, '#b71c1c');
+                        this._pxRect(ctx, x - 2 * s, y - 2 * s, 4 * s, 4 * s, '#e53935');
+                        // Core
+                        var rp1 = Math.sin(age * 4) * 0.3 + 0.7;
+                        this._pxRect(ctx, x - 1 * s, y - 1 * s, 2 * s, 2 * s, 'rgba(255,235,59,' + rp1.toFixed(2) + ')');
+                        // 4 vents
+                        this._pxRect(ctx, x - 5 * s, y - 1 * s, 1 * s, 2 * s, '#ff5252');
+                        this._pxRect(ctx, x + 4 * s, y - 1 * s, 1 * s, 2 * s, '#ff5252');
+                        this._pxRect(ctx, x - 1 * s, y - 5 * s, 2 * s, 1 * s, '#ff5252');
+                        this._pxRect(ctx, x - 1 * s, y + 4 * s, 2 * s, 1 * s, '#ff5252');
+                        // Single containment ring
+                        ctx.strokeStyle = 'rgba(255,82,82,' + (0.3 + rp1 * 0.3).toFixed(2) + ')';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 5 * s, 0, Math.PI * 2);
+                        ctx.stroke();
+                    } else if (lvl === 2) {
+                        // Lv.2 — reinforced reactor with double border, 8 vents, cooling pipes
+                        this._pxRect(ctx, x - 5 * s, y - 5 * s, 10 * s, 10 * s, '#4e0000');
+                        this._pxRect(ctx, x - 4 * s, y - 4 * s, 8 * s, 8 * s, '#7f0000');
+                        this._pxRect(ctx, x - 3 * s, y - 3 * s, 6 * s, 6 * s, '#b71c1c');
+                        this._pxRect(ctx, x - 2 * s, y - 2 * s, 4 * s, 4 * s, '#e53935');
+                        // Intensely pulsing core
+                        var rp2 = Math.sin(age * 5) * 0.4 + 0.6;
+                        this._pxRect(ctx, x - 1 * s, y - 1 * s, 2 * s, 2 * s, 'rgba(255,167,38,' + rp2.toFixed(2) + ')');
+                        this._pxRect(ctx, x - s * 0.4, y - s * 0.4, s * 0.8, s * 0.8, 'rgba(255,235,59,' + pulse.toFixed(2) + ')');
+                        // 8 vents (corners + sides)
+                        this._pxRect(ctx, x - 6 * s, y - 1 * s, 1 * s, 2 * s, '#ff5252');
+                        this._pxRect(ctx, x + 5 * s, y - 1 * s, 1 * s, 2 * s, '#ff5252');
+                        this._pxRect(ctx, x - 1 * s, y - 6 * s, 2 * s, 1 * s, '#ff5252');
+                        this._pxRect(ctx, x - 1 * s, y + 5 * s, 2 * s, 1 * s, '#ff5252');
+                        this._pxRect(ctx, x - 5 * s, y - 4 * s, 1 * s, 1 * s, '#ff8a80');
+                        this._pxRect(ctx, x + 4 * s, y - 4 * s, 1 * s, 1 * s, '#ff8a80');
+                        this._pxRect(ctx, x - 5 * s, y + 3 * s, 1 * s, 1 * s, '#ff8a80');
+                        this._pxRect(ctx, x + 4 * s, y + 3 * s, 1 * s, 1 * s, '#ff8a80');
+                        // Cooling pipes from corners
+                        this._pxRect(ctx, x - 6 * s, y - 6 * s, 1 * s, 2 * s, '#b0bec5');
+                        this._pxRect(ctx, x - 6 * s, y - 6 * s, 2 * s, 1 * s, '#b0bec5');
+                        this._pxRect(ctx, x + 5 * s, y - 6 * s, 1 * s, 2 * s, '#b0bec5');
+                        this._pxRect(ctx, x + 4 * s, y - 6 * s, 2 * s, 1 * s, '#b0bec5');
+                        this._pxRect(ctx, x - 6 * s, y + 4 * s, 1 * s, 2 * s, '#b0bec5');
+                        this._pxRect(ctx, x - 6 * s, y + 5 * s, 2 * s, 1 * s, '#b0bec5');
+                        this._pxRect(ctx, x + 5 * s, y + 4 * s, 1 * s, 2 * s, '#b0bec5');
+                        this._pxRect(ctx, x + 4 * s, y + 5 * s, 2 * s, 1 * s, '#b0bec5');
+                        // Two containment rings rotating opposite
+                        var ra2a = age * 1.5;
+                        var ra2b = -age * 1.2;
+                        ctx.strokeStyle = 'rgba(255,82,82,' + (0.3 + rp2 * 0.4).toFixed(2) + ')';
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 6 * s, ra2a, ra2a + Math.PI * 1.4);
+                        ctx.stroke();
+                        ctx.strokeStyle = 'rgba(255,171,0,0.4)';
+                        ctx.beginPath();
+                        ctx.arc(x, y, 6.5 * s, ra2b, ra2b + Math.PI * 1.4);
+                        ctx.stroke();
+                        // Warning symbol
+                        ctx.fillStyle = 'rgba(255,200,0,0.7)';
+                        ctx.font = 'bold 10px Courier New';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('\u26A0', x, y - 7 * s);
+                    } else {
+                        // Lv.3 — stellar forge: miniature sun
+                        // Heat distortion wobble on core
+                        var wobX = Math.sin(age * 7) * s * 0.4;
+                        var wobY = Math.cos(age * 9) * s * 0.4;
+                        // Massive structure
+                        this._pxRect(ctx, x - 6 * s, y - 6 * s, 12 * s, 12 * s, '#4e0000');
+                        this._pxRect(ctx, x - 5 * s, y - 5 * s, 10 * s, 10 * s, '#7f0000');
+                        this._pxRect(ctx, x - 4 * s, y - 4 * s, 8 * s, 8 * s, '#b71c1c');
+                        this._pxRect(ctx, x - 3 * s, y - 3 * s, 6 * s, 6 * s, '#e53935');
+                        this._pxRect(ctx, x - 2 * s, y - 2 * s, 4 * s, 4 * s, '#ff5252');
+                        // Blazing white-yellow core with wobble
+                        var rp3 = Math.sin(age * 6) * 0.3 + 0.7;
+                        this._pxRect(ctx, x - 1 * s + wobX, y - 1 * s + wobY, 2 * s, 2 * s, 'rgba(255,255,200,' + rp3.toFixed(2) + ')');
+                        this._pxRect(ctx, x - s * 0.4 + wobX, y - s * 0.4 + wobY, s * 0.8, s * 0.8, 'rgba(255,255,255,' + pulse.toFixed(2) + ')');
+                        // 8 energy beams radiating outward
+                        for (var eb = 0; eb < 8; eb++) {
+                            var ebA = eb * (Math.PI / 4) + age * 0.5;
+                            var ebX1 = x + Math.cos(ebA) * 3 * s;
+                            var ebY1 = y + Math.sin(ebA) * 3 * s;
+                            var ebX2 = x + Math.cos(ebA) * 5.5 * s;
+                            var ebY2 = y + Math.sin(ebA) * 5.5 * s;
+                            ctx.strokeStyle = 'rgba(255,235,59,' + (rp3 * 0.6).toFixed(2) + ')';
+                            ctx.lineWidth = 1.5;
+                            ctx.beginPath();
+                            ctx.moveTo(ebX1, ebY1);
+                            ctx.lineTo(ebX2, ebY2);
+                            ctx.stroke();
+                        }
+                        // Triple containment rings
+                        var ra3 = age * 1.2;
+                        ctx.save();
+                        // Outer gold ring
+                        ctx.strokeStyle = 'rgba(255,215,0,0.5)';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 7.5 * s, ra3, ra3 + Math.PI * 1.5);
+                        ctx.stroke();
+                        // Middle cyan ring
+                        ctx.strokeStyle = 'rgba(0,229,255,0.45)';
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 7 * s, -ra3 * 0.8, -ra3 * 0.8 + Math.PI * 1.3);
+                        ctx.stroke();
+                        // Inner white ring
+                        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 6.5 * s, ra3 * 1.5, ra3 * 1.5 + Math.PI * 1.1);
+                        ctx.stroke();
+                        ctx.restore();
+                        // Plasma particles orbiting
+                        for (var pp3 = 0; pp3 < 5; pp3++) {
+                            var ppa = age * 2.5 + pp3 * (Math.PI * 2 / 5);
+                            var ppr = 6 * s;
+                            var ppx = x + Math.cos(ppa) * ppr;
+                            var ppy = y + Math.sin(ppa) * ppr;
+                            this._pxRect(ctx, ppx - s * 0.3, ppy - s * 0.3, s * 0.6, s * 0.6, 'rgba(255,235,59,0.8)');
+                        }
+                        // Rate label
+                        ctx.fillStyle = '#ffd700';
+                        ctx.font = 'bold 9px Courier New';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('+450 OKR/s', x, y - 8 * s);
+                    }
                     break;
             }
+
+            // === Common upgrade indicators (after building switch) ===
 
             // Upgrade glow ring
             if (lvl >= 2) {
                 ctx.save();
-                ctx.strokeStyle = lvl === 3 ? 'rgba(255, 215, 0, 0.5)' : 'rgba(0, 255, 255, 0.3)';
-                ctx.lineWidth = lvl;
-                ctx.shadowColor = lvl === 3 ? '#ffd700' : '#0ff';
-                ctx.shadowBlur = 5 + lvl * 3;
+                if (lvl === 3) {
+                    ctx.strokeStyle = 'rgba(255,215,0,0.5)';
+                    ctx.lineWidth = 3;
+                    ctx.shadowColor = '#ffd700';
+                    ctx.shadowBlur = 14;
+                } else {
+                    ctx.strokeStyle = 'rgba(0,255,255,0.3)';
+                    ctx.lineWidth = 2;
+                    ctx.shadowColor = '#0ff';
+                    ctx.shadowBlur = 8;
+                }
                 ctx.beginPath();
-                ctx.arc(x, y, (6 + lvl) * s, 0, Math.PI * 2);
+                ctx.arc(x, y, (7 + lvl) * s, 0, Math.PI * 2);
                 ctx.stroke();
                 ctx.restore();
             }
 
-            // Level stars
-            if (lvl >= 2) {
-                ctx.fillStyle = '#ffd700';
-                ctx.font = 'bold ' + (7 + lvl) + 'px Courier New';
+            // Level star indicators
+            if (lvl === 2) {
+                ctx.fillStyle = '#00e5ff';
+                ctx.font = 'bold 9px Courier New';
                 ctx.textAlign = 'center';
-                var stars = '';
-                for (var si = 0; si < lvl; si++) stars += '★';
-                ctx.fillText(stars, x, y + (8 + lvl) * s);
+                ctx.fillText('\u2605\u2605', x, y + (9 + lvl) * s);
+            } else if (lvl === 3) {
+                ctx.fillStyle = '#ffd700';
+                ctx.font = 'bold 11px Courier New';
+                ctx.textAlign = 'center';
+                ctx.fillText('\u2605\u2605\u2605', x, y + (9 + lvl) * s);
             }
 
-            // Building name label below
-            ctx.fillStyle = BUILDINGS[node.type].color;
-            ctx.font = '9px Courier New';
+            // Lv.3 orbiting energy motes
+            if (lvl === 3) {
+                var moteR = (7 + lvl) * s;
+                for (var em = 0; em < 4; em++) {
+                    var emA = age * 2 + em * (Math.PI / 2);
+                    var emx = x + Math.cos(emA) * moteR;
+                    var emy = y + Math.sin(emA) * moteR;
+                    ctx.save();
+                    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+                    ctx.shadowColor = '#ffd700';
+                    ctx.shadowBlur = 6;
+                    ctx.beginPath();
+                    ctx.arc(emx, emy, s * 0.4, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+
+            // Building name label
+            var labelColor = lvl === 3 ? '#ffd700' : BUILDINGS[node.type].color;
+            ctx.fillStyle = labelColor;
+            ctx.font = lvl === 3 ? 'bold 10px Courier New' : '9px Courier New';
             ctx.textAlign = 'center';
             var label = BUILDINGS[node.type].name + (lvl > 1 ? ' Lv.' + lvl : '');
             ctx.fillText(label, x, y + 7 * s);
