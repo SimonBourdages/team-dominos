@@ -1,8 +1,8 @@
-# 🍕 Team Dominos 3D - The Delivery Person
+# 🍕 OKR Factory 3D - The Delivery Person
 
 ## Phase 1 Complete 3D Platformer
 
-A fully playable 3D platformer game built with Three.js featuring Team Dominos characters delivering OKRs to Jrod!
+A fully playable 3D platformer game built with Three.js featuring OKR Factory characters delivering OKRs to Jrod!
 
 ## 🎮 How to Play
 
@@ -170,9 +170,9 @@ Ready to add:
 
 ## 📝 Game Design Philosophy
 
-This is a **fun, polished foundation** for Team Dominos. The core platformer mechanics are solid and can support any future gameplay additions. The low-poly art style is intentional - it's charming, performant, and allows focus on gameplay over graphics.
+This is a **fun, polished foundation** for OKR Factory. The core platformer mechanics are solid and can support any future gameplay additions. The low-poly art style is intentional - it's charming, performant, and allows focus on gameplay over graphics.
 
 ---
 
-**Made with ❤️ for Team Dominos**  
+**Made with ❤️ for OKR Factory**  
 *Delivering OKRs Since 2024*

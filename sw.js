@@ -1,5 +1,5 @@
-// Service Worker for Team Dominos
-const CACHE_NAME = 'team-dominos-v1.0.0';
+// Service Worker for OKR Factory
+const CACHE_NAME = 'okr-factory-v1.0.0';
 const urlsToCache = [
   './index.html',
   './manifest.json'
@@ -100,6 +100,6 @@ self.addEventListener('push', event => {
   };
   
   event.waitUntil(
-    self.registration.showNotification('Team Dominos', options)
+    self.registration.showNotification('OKR Factory', options)
   );
 });
