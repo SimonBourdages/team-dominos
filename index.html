@@ -665,22 +665,40 @@
             'upgrade-3':    { icon: '⬆️', name: 'Maxed Out',           desc: 'Upgrade a building to level 3' }
         };
 
+        var BG_IMAGES = {
+            1:  'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=1920&q=80',
+            2:  'https://images.unsplash.com/photo-1543722530-d2c3201371e7?w=1920&q=80',
+            3:  'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?w=1920&q=80',
+            4:  'https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=1920&q=80',
+            5:  'https://images.unsplash.com/photo-1444703686981-a3abbc4d4fe3?w=1920&q=80',
+            6:  'https://images.unsplash.com/photo-1465101162946-4377e57745c3?w=1920&q=80',
+            7:  'https://images.unsplash.com/photo-1507400492013-162706c8c05e?w=1920&q=80',
+            8:  'https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=1920&q=80',
+            9:  'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=1920&q=80',
+            10: 'https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?w=1920&q=80',
+            11: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1920&q=80',
+            12: 'https://images.unsplash.com/photo-1464802686167-b939a6910659?w=1920&q=80',
+            13: 'https://images.unsplash.com/photo-1484589065579-248aad0d628b?w=1920&q=80',
+            14: 'https://images.unsplash.com/photo-1520034475321-cbe63696469a?w=1920&q=80',
+            15: 'https://images.unsplash.com/photo-1539321908154-04927596764d?w=1920&q=80'
+        };
+
         var BG_FILTERS = {
-            1:  'brightness(0.25) saturate(1.2) hue-rotate(0deg)',
-            2:  'brightness(0.24) saturate(1.25) hue-rotate(20deg)',
-            3:  'brightness(0.24) saturate(1.3) hue-rotate(40deg)',
-            4:  'brightness(0.23) saturate(1.35) hue-rotate(60deg)',
-            5:  'brightness(0.23) saturate(1.4) hue-rotate(80deg)',
-            6:  'brightness(0.22) saturate(1.4) hue-rotate(100deg)',
-            7:  'brightness(0.22) saturate(1.45) hue-rotate(120deg)',
-            8:  'brightness(0.21) saturate(1.45) hue-rotate(145deg)',
-            9:  'brightness(0.21) saturate(1.5) hue-rotate(170deg)',
-            10: 'brightness(0.20) saturate(1.5) hue-rotate(195deg)',
-            11: 'brightness(0.20) saturate(1.55) hue-rotate(220deg)',
-            12: 'brightness(0.19) saturate(1.6) hue-rotate(245deg)',
-            13: 'brightness(0.19) saturate(1.65) hue-rotate(270deg)',
-            14: 'brightness(0.18) saturate(1.7) hue-rotate(300deg)',
-            15: 'brightness(0.18) saturate(1.8) hue-rotate(330deg)'
+            1:  'brightness(0.3) saturate(1.2)',
+            2:  'brightness(0.28) saturate(1.3)',
+            3:  'brightness(0.28) saturate(1.3)',
+            4:  'brightness(0.27) saturate(1.3)',
+            5:  'brightness(0.27) saturate(1.4)',
+            6:  'brightness(0.26) saturate(1.3)',
+            7:  'brightness(0.26) saturate(1.4)',
+            8:  'brightness(0.25) saturate(1.3)',
+            9:  'brightness(0.25) saturate(1.4)',
+            10: 'brightness(0.24) saturate(1.4)',
+            11: 'brightness(0.24) saturate(1.5)',
+            12: 'brightness(0.23) saturate(1.5)',
+            13: 'brightness(0.22) saturate(1.5)',
+            14: 'brightness(0.22) saturate(1.6)',
+            15: 'brightness(0.21) saturate(1.7)'
         };
 
         var BG_OVERLAYS = {
@@ -782,10 +800,22 @@
             this.musicNodes = [];
             this.musicTimer = null;
 
-            // Galaxy background
+            // Galaxy backgrounds - per-level HD images
+            this.galaxyImages = {};
+            this.galaxyLoaded = {};
+            var self2 = this;
+            for (var lvl = 1; lvl <= 15; lvl++) {
+                (function(l) {
+                    var img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    img.onload = function() { self2.galaxyLoaded[l] = true; };
+                    img.src = BG_IMAGES[l];
+                    self2.galaxyImages[l] = img;
+                })(lvl);
+            }
+            // Keep fallback for local image
             this.galaxyImg = new Image();
-            this.galaxyLoaded = false;
-            this.galaxyImg.onload = function() { self.galaxyLoaded = true; };
+            this.galaxyImg.onload = function() { self2.galaxyLoaded[0] = true; };
             this.galaxyImg.src = './phase3-galaxy.jpg';
 
             // Autosave interval
@@ -1833,22 +1863,33 @@
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, w, h);
 
-            if (this.galaxyLoaded && this.state) {
-                ctx.save();
-                ctx.filter = BG_FILTERS[this.state.currentLevel] || BG_FILTERS[1];
+            if (!this.state) return;
+            var lvl = this.state.currentLevel;
+            var img = this.galaxyImages[lvl];
+            var loaded = this.galaxyLoaded[lvl];
 
-                var imgW = this.galaxyImg.width;
-                var imgH = this.galaxyImg.height;
+            // Fallback to local image if HD not loaded yet
+            if (!loaded || !img) {
+                img = this.galaxyImg;
+                loaded = this.galaxyLoaded[0];
+            }
+
+            if (loaded && img && img.width) {
+                ctx.save();
+                ctx.filter = BG_FILTERS[lvl] || BG_FILTERS[1];
+
+                var imgW = img.width;
+                var imgH = img.height;
                 var scale = Math.max(w / imgW, h / imgH);
                 var dw = imgW * scale;
                 var dh = imgH * scale;
-                ctx.drawImage(this.galaxyImg, (w - dw) / 2, (h - dh) / 2, dw, dh);
+                ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
 
                 ctx.filter = 'none';
                 ctx.restore();
 
                 // Color overlay
-                ctx.fillStyle = BG_OVERLAYS[this.state.currentLevel] || BG_OVERLAYS[1];
+                ctx.fillStyle = BG_OVERLAYS[lvl] || BG_OVERLAYS[1];
                 ctx.fillRect(0, 0, w, h);
             }
         };
@@ -3135,13 +3176,14 @@
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, w, h);
 
-            if (this.galaxyLoaded) {
+            if (this.galaxyLoaded[0] || this.galaxyLoaded[1]) {
+                var menuImg = this.galaxyLoaded[1] ? this.galaxyImages[1] : this.galaxyImg;
                 ctx.save();
                 ctx.filter = 'brightness(0.15) saturate(0.8)';
-                var imgW = this.galaxyImg.width;
-                var imgH = this.galaxyImg.height;
+                var imgW = menuImg.width;
+                var imgH = menuImg.height;
                 var scale = Math.max(w / imgW, h / imgH);
-                ctx.drawImage(this.galaxyImg, (w - imgW * scale) / 2, (h - imgH * scale) / 2, imgW * scale, imgH * scale);
+                ctx.drawImage(menuImg, (w - imgW * scale) / 2, (h - imgH * scale) / 2, imgW * scale, imgH * scale);
                 ctx.filter = 'none';
                 ctx.restore();
             }
@@ -3156,15 +3198,16 @@
                     if (self.running) { self._menuAnim = false; return; }
                     ctx.fillStyle = '#000';
                     ctx.fillRect(0, 0, w, h);
-                    if (self.galaxyLoaded) {
+                    if (self.galaxyLoaded[0] || self.galaxyLoaded[1]) {
+                        var menuImg2 = self.galaxyLoaded[1] ? self.galaxyImages[1] : self.galaxyImg;
                         ctx.save();
                         ctx.filter = 'brightness(0.15) saturate(0.8) hue-rotate(' + ((Date.now() * 0.01) % 360) + 'deg)';
-                        var sc = Math.max(w / self.galaxyImg.width, h / self.galaxyImg.height);
-                        ctx.drawImage(self.galaxyImg,
-                            (w - self.galaxyImg.width * sc) / 2,
-                            (h - self.galaxyImg.height * sc) / 2,
-                            self.galaxyImg.width * sc,
-                            self.galaxyImg.height * sc);
+                        var sc = Math.max(w / menuImg2.width, h / menuImg2.height);
+                        ctx.drawImage(menuImg2,
+                            (w - menuImg2.width * sc) / 2,
+                            (h - menuImg2.height * sc) / 2,
+                            menuImg2.width * sc,
+                            menuImg2.height * sc);
                         ctx.filter = 'none';
                         ctx.restore();
                     }
