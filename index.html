@@ -481,11 +481,12 @@
     <div id="menu">
         <h1>TEAM DOMINOS</h1>
         <p>A Digital Transformation Journey</p>
-        <p style="margin-top: 20px;">Evolve through 3 phases of productivity:</p>
+        <p style="margin-top: 20px;">Evolve through the active game phases:</p>
         <p>🎮 Levels 1-5: Manual Platforming</p>
-        <p>🤖 Levels 6-10: AI Management</p>
         <p>⚡ Levels 11-15: Full Automation</p>
         <button onclick="game.startGame()" style="margin-top: 20px;">NEW GAME</button>
+        <button onclick="game.startPhase3Standalone()">PHASE 3 ONLY (OKR FARMING)</button>
+        <p style="margin-top: 6px; font-size: 12px;"><a href="./phase3.html" style="color:#0ff;">Direct sub link: phase3.html</a></p>
         <button onclick="game.loadGame()">CONTINUE</button>
         <button onclick="game.clearSave()" style="font-size: 12px; background: #600; margin-top: 10px;">CLEAR SAVE DATA</button>
     </div>
@@ -617,6 +618,7 @@
 
                 this.setupEventListeners();
                 this.showMenu();
+                if (this.isPhase3StandaloneMode()) this.startPhase3Standalone();
             }
             
             initLevelConfigs() {
@@ -1054,12 +1056,29 @@
             showMenu() {
                 document.getElementById('menu').style.display = 'block';
             }
+
+            isPhase3StandaloneMode() {
+                const params = new URLSearchParams(window.location.search);
+                return params.get('mode') === 'phase3' || params.get('phase') === '3';
+            }
             
             startGame() {
                 document.getElementById('menu').style.display = 'none';
                 this.gameStarted = true;
                 this.setupPhase1();
                 this.loadLevel(1);
+                this.gameLoop();
+            }
+
+            startPhase3Standalone() {
+                document.getElementById('menu').style.display = 'none';
+                this.gameStarted = true;
+                this.state.currencies.dp = 0;
+                this.state.currencies.mp = 0;
+                this.state.currencies.ac = Math.max(50, this.state.currencies.ac || 0);
+                this.state.aiWorkers = [];
+                this.setupPhase3();
+                this.loadLevel(11);
                 this.gameLoop();
             }
             
@@ -1384,6 +1403,7 @@
             }
             
             loadLevel(levelNum) {
+                if (levelNum > 5 && levelNum < 11) levelNum = 11;
                 this.levelCompleting = false;
                 this.liftAnimating = false;
                 this.levelStartTime = performance.now();
@@ -1399,14 +1419,11 @@
                 
                 // Determine phase
                 if (levelNum <= 5) this.state.phase = 1;
-                else if (levelNum <= 10) this.state.phase = 2;
                 else this.state.phase = 3;
                 
                 // Generate level based on phase
                 if (this.state.phase === 1) {
                     this.generatePhase1Level(levelNum);
-                } else if (this.state.phase === 2) {
-                    this.generatePhase2Level(levelNum);
                 } else {
                     this.generatePhase3Level(levelNum);
                 }
@@ -3878,8 +3895,8 @@
                 const messages = [
                     '⭐ EVOLUTION INITIATED ⭐',
                     'Manual processes... OBSOLETE',
-                    'Transitioning to ANIME DIMENSION',
-                    '✨ PHASE 2: TEAM MANAGER MODE ✨'
+                    'Skipping Phase 2 by request',
+                    '⚡ PHASE 3: AUTOMATION MODE ⚡'
                 ];
                 
                 let i = 0;
@@ -3897,12 +3914,13 @@
                     } else {
                         // Dramatic transition effect
                         cutscene.style.animation = 'none';
-                        text.textContent = '🌸 ENTERING ANIME WORLD 🌸';
+                        text.textContent = '⚡ ENTERING AUTOMATION WORLD ⚡';
                         
                         setTimeout(() => {
                             // Apply evolution changes
                             this.state.currencies.mp = 0;
                             this.state.currencies.dp = 0;
+                            this.state.currencies.ac = Math.max(50, this.state.currencies.ac || 0);
                             
                             // Keep 50% of stats
                             Object.keys(this.state.playerStats).forEach(key => {
@@ -3912,8 +3930,8 @@
                             });
                             
                             cutscene.style.display = 'none';
-                            this.setupPhase2();
-                            this.loadLevel(6);
+                            this.setupPhase3();
+                            this.loadLevel(11);
                             this.paused = false;
                         }, 2000);
                     }
@@ -4123,13 +4141,18 @@
                         delete data.achievements;
                     }
                     this.state = data;
+                    if (this.state.phase === 2 || (this.state.currentLevel > 5 && this.state.currentLevel < 11)) {
+                        this.state.phase = 3;
+                        this.state.currentLevel = 11;
+                        this.state.currencies.dp = 0;
+                        this.state.currencies.mp = 0;
+                        this.state.currencies.ac = Math.max(50, this.state.currencies.ac || 0);
+                    }
                     document.getElementById('menu').style.display = 'none';
                     this.gameStarted = true;
                     
                     if (this.state.phase === 1) {
                         this.setupPhase1();
-                    } else if (this.state.phase === 2) {
-                        this.setupPhase2();
                     } else {
                         this.setupPhase3();
                     }

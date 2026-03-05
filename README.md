@@ -2,6 +2,10 @@
 
 A complete 15-level game featuring evolving rendering styles that represent the journey from manual work to full automation.
 
+> **Update:** Active gameplay now skips the former Phase 2. Main progression goes from Level 5 directly to Level 11 (automation).
+>
+> **Phase 3 standalone link:** `phase3.html` (or `index.html?mode=phase3`)
+
 ## 🎮 Game Structure
 
 ### Phase 1: Levels 1-5 (3D Platformer)
@@ -116,11 +120,9 @@ The game becomes increasingly passive, reflecting real digital transformation wh
 1. Open `index.html` in a modern web browser (Chrome, Firefox, Edge)
 2. Click "START GAME" to begin
 3. Complete Level 1-5 manually to experience the 3D platformer
-4. Witness Evolution 1 and adapt to isometric management
-5. Hire AI workers to scale your OKR collection
-6. Witness Evolution 2 and enter full automation mode
-7. Build your automation empire to reach 1 million OKRs
-8. Choose your ending!
+4. After Evolution 1, Phase 2 is skipped and the game jumps directly to full automation (Level 11+)
+5. Build your automation empire to reach 1 million OKRs
+6. Choose your ending!
 
 ## 💾 Browser Requirements
 
