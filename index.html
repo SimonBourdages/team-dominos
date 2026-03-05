@@ -557,6 +557,8 @@
         <button onclick="game.toggleMusic()">🎵 Music</button>
         <button onclick="game.showAchievements()">🏆 Achievements</button>
         <button onclick="game.showEventHistory()">📜 Events</button>
+        <button onclick="game.buyRepairBot()">🔧 Buy Repair Bot (<span id="repairBotCost">200</span> AC)</button>
+        <div style="margin-top:4px;color:#0ff;font-size:10px;">Repair Bots: <span id="repairBotCount">0</span></div>
         <div style="margin-top:6px;color:#ff0;font-size:11px;">Next event: <span id="eventCountdown">--</span>s</div>
     </div>
 
@@ -903,6 +905,8 @@
             this.shipSpawnTimer = 0;
             this.thiefShips = [];
             this.thiefSpawnTimer = 0;
+            this.repairBots = [];
+            this.repairBotCost = 200;
             this.eventTimer = 10 + Math.random() * 15;
             this.activeEvent = null;
             this.eventBanner = null;
@@ -1033,7 +1037,7 @@
             var container = document.getElementById('buildings');
             container.innerHTML = '';
             var self = this;
-            var types = ['collector', 'processor', 'multiplier', 'synthesizer', 'generator', 'bank', 'repairbot'];
+            var types = ['collector', 'processor', 'multiplier', 'synthesizer', 'generator', 'bank'];
 
             types.forEach(function(type) {
                 var b = BUILDINGS[type];
@@ -1430,6 +1434,27 @@
                 return;
             }
 
+            // Don't place too close to edges (40px margin)
+            if (x < 40 || x > this.canvas.width - 40 || y < 40 || y > this.canvas.height - 40) {
+                this.addFloatingText(x, y - 20, 'Too close to edge!', '#f84');
+                return;
+            }
+
+            // Must be within 200px of factory or another building
+            var maxRange = 200;
+            if (this.nodes.length > 0) {
+                var closestDist = distToFactory;
+                for (var i = 0; i < this.nodes.length; i++) {
+                    var ndx = x - this.nodes[i].x, ndy = y - this.nodes[i].y;
+                    var nd = Math.sqrt(ndx * ndx + ndy * ndy);
+                    if (nd < closestDist) closestDist = nd;
+                }
+                if (closestDist > maxRange) {
+                    this.addFloatingText(x, y - 20, 'Too far! Stay within range.', '#f84');
+                    return;
+                }
+            }
+
             this.placeBuilding(x, y);
         };
 
@@ -1512,6 +1537,30 @@
             this.playSound('complete');
 
             this.updateBuildingButtons();
+            this.updateUI();
+        };
+
+        OKRFarmingGame.prototype.buyRepairBot = function() {
+            if (!this.running || !this.state) return;
+            var cost = this.repairBotCost;
+            if (this.state.currencies.ac < cost) {
+                this.addFloatingText(this.canvas.width / 2, this.canvas.height / 2, 'Need ' + cost + ' AC!', '#f44', 14);
+                this.playSound('click');
+                return;
+            }
+            this.state.currencies.ac -= cost;
+            var fX = this.canvas.width / 2;
+            var fY = this.canvas.height / 2;
+            this.repairBots.push({
+                x: fX, y: fY - 60,
+                age: 0, targetIdx: -1, repairing: false, orbitAngle: Math.random() * Math.PI * 2
+            });
+            this.repairBotCost = Math.floor(this.repairBotCost * 1.5);
+            document.getElementById('repairBotCost').textContent = this.formatNumber(this.repairBotCost);
+            document.getElementById('repairBotCount').textContent = this.repairBots.length;
+            this.addFloatingText(fX, fY - 80, '🔧 Repair Bot deployed!', '#0ff', 14);
+            this.spawnParticles(fX, fY - 60, '#0ff', 10);
+            this.playSound('complete');
             this.updateUI();
         };
 
@@ -1697,20 +1746,18 @@
                 }
             }
 
-            // Repair bots — fly to lowest-HP building and repair it
-            for (var i = 0; i < this.nodes.length; i++) {
-                var rn = this.nodes[i];
-                if (rn.type !== 'repairbot' || rn.hp <= 0) continue;
-                var repairAmt = BUILDINGS.repairbot.repairRate * UPGRADE_POWER[rn.level || 1] * dt;
+            // Standalone repair bots — fly to lowest-HP building and repair it
+            var fX = this.canvas.width / 2;
+            var fY = this.canvas.height / 2;
+            for (var i = 0; i < this.repairBots.length; i++) {
+                var bot = this.repairBots[i];
+                bot.age += dt;
+                var repairAmt = 15 * dt;
 
-                // Initialize bot flight position if not set
-                if (rn.botX === undefined) { rn.botX = rn.x; rn.botY = rn.y; }
-
-                // Find lowest-HP building that isn't this repair bot
+                // Find lowest-HP building
                 var lowestIdx = -1;
                 var lowestHp = Infinity;
                 for (var j = 0; j < this.nodes.length; j++) {
-                    if (j === i) continue;
                     var nd = this.nodes[j];
                     var hp = nd.hp !== undefined ? nd.hp : 100;
                     var maxHp = nd.maxHp || 100;
@@ -1722,36 +1769,35 @@
 
                 if (lowestIdx >= 0) {
                     var target = this.nodes[lowestIdx];
-                    rn.repairTarget = lowestIdx;
-                    // Fly toward target
-                    var rdx = target.x - rn.botX;
-                    var rdy = target.y - rn.botY;
+                    bot.targetIdx = lowestIdx;
+                    var rdx = target.x - bot.x;
+                    var rdy = target.y - bot.y;
                     var rdist = Math.sqrt(rdx * rdx + rdy * rdy);
-                    var flySpeed = 120 + (rn.level || 1) * 40;
 
                     if (rdist > 15) {
-                        // Move toward target
-                        rn.botX += (rdx / rdist) * flySpeed * dt;
-                        rn.botY += (rdy / rdist) * flySpeed * dt;
-                        rn.repairing = false;
+                        bot.x += (rdx / rdist) * 150 * dt;
+                        bot.y += (rdy / rdist) * 150 * dt;
+                        bot.repairing = false;
                     } else {
-                        // At target — repair!
-                        rn.repairing = true;
+                        bot.repairing = true;
                         target.hp = Math.min(target.maxHp || 100, target.hp + repairAmt);
                         if (Math.random() < dt * 3) {
-                            this.addFloatingText(target.x + (Math.random() - 0.5) * 10, target.y - 25, '+' + Math.floor(repairAmt) + ' HP', '#0ff', 10);
+                            this.addFloatingText(target.x + (Math.random() - 0.5) * 10, target.y - 25, '+' + Math.ceil(repairAmt) + ' HP', '#0ff', 10);
                         }
                     }
                 } else {
-                    // No damaged buildings — return to home base
-                    rn.repairTarget = -1;
-                    rn.repairing = false;
-                    var hdx = rn.x - rn.botX;
-                    var hdy = rn.y - rn.botY;
-                    var hdist = Math.sqrt(hdx * hdx + hdy * hdy);
-                    if (hdist > 5) {
-                        rn.botX += (hdx / hdist) * 100 * dt;
-                        rn.botY += (hdy / hdist) * 100 * dt;
+                    // No damaged buildings — orbit factory
+                    bot.targetIdx = -1;
+                    bot.repairing = false;
+                    bot.orbitAngle = (bot.orbitAngle || 0) + dt * 0.8;
+                    var orbitR = 80;
+                    var tx = fX + Math.cos(bot.orbitAngle) * orbitR;
+                    var ty = fY + Math.sin(bot.orbitAngle) * orbitR;
+                    var odx = tx - bot.x, ody = ty - bot.y;
+                    var odist = Math.sqrt(odx * odx + ody * ody);
+                    if (odist > 3) {
+                        bot.x += (odx / odist) * 100 * dt;
+                        bot.y += (ody / odist) * 100 * dt;
                     }
                 }
             }
@@ -1759,8 +1805,6 @@
             // Thief ships — visible attack runs on OKR factory
             var lv = LEVELS[this.state.currentLevel];
             var past50 = this.state.okrsCollected >= lv.okrGoal * 0.5;
-            var fX = this.canvas.width / 2;
-            var fY = this.canvas.height / 2;
 
             if (past50) {
                 this.thiefSpawnTimer += dt;
@@ -2438,32 +2482,16 @@
         };
 
         OKRFarmingGame.prototype.drawRepairDrones = function(ctx) {
-            for (var i = 0; i < this.nodes.length; i++) {
-                var rn = this.nodes[i];
-                if (rn.type !== 'repairbot' || rn.hp <= 0) continue;
-                if (rn.botX === undefined) continue;
-                
-                var bx = rn.botX;
-                var by = rn.botY;
-                var lvl = rn.level || 1;
-                var ds = 3 + lvl; // drone size
-                var age = rn.age || 0;
-                
-                // Tether line from home to drone
-                ctx.save();
-                ctx.strokeStyle = 'rgba(0, 229, 255, 0.15)';
-                ctx.lineWidth = 1;
-                ctx.setLineDash([3, 5]);
-                ctx.beginPath();
-                ctx.moveTo(rn.x, rn.y);
-                ctx.lineTo(bx, by);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.restore();
+            for (var i = 0; i < this.repairBots.length; i++) {
+                var bot = this.repairBots[i];
+                var bx = bot.x;
+                var by = bot.y;
+                var ds = 5;
+                var age = bot.age || 0;
                 
                 // Repair beam to target
-                if (rn.repairing && rn.repairTarget >= 0 && rn.repairTarget < this.nodes.length) {
-                    var tgt = this.nodes[rn.repairTarget];
+                if (bot.repairing && bot.targetIdx >= 0 && bot.targetIdx < this.nodes.length) {
+                    var tgt = this.nodes[bot.targetIdx];
                     ctx.save();
                     ctx.strokeStyle = 'rgba(0, 255, 255, ' + (0.3 + Math.sin(age * 8) * 0.2).toFixed(2) + ')';
                     ctx.lineWidth = 2;
@@ -2476,7 +2504,6 @@
                     ctx.shadowBlur = 0;
                     ctx.restore();
                     
-                    // Repair sparkles at target
                     if (Math.random() < 0.15) {
                         ctx.fillStyle = '#0ff';
                         ctx.fillRect(tgt.x + (Math.random() - 0.5) * 12, tgt.y + (Math.random() - 0.5) * 12, 2, 2);
@@ -2493,9 +2520,7 @@
                 ctx.save();
                 ctx.translate(bx, by);
                 ctx.rotate(age * 2);
-                
-                // Outer diamond
-                ctx.fillStyle = lvl >= 3 ? '#ffd700' : lvl >= 2 ? '#00e5ff' : '#00acc1';
+                ctx.fillStyle = '#00e5ff';
                 ctx.beginPath();
                 ctx.moveTo(0, -ds);
                 ctx.lineTo(ds, 0);
@@ -2503,28 +2528,17 @@
                 ctx.lineTo(-ds, 0);
                 ctx.closePath();
                 ctx.fill();
-                
-                // Inner core
                 ctx.fillStyle = '#fff';
                 ctx.beginPath();
                 ctx.arc(0, 0, ds * 0.3, 0, Math.PI * 2);
                 ctx.fill();
-                
                 ctx.restore();
                 
-                // Level indicator
-                if (lvl >= 2) {
-                    ctx.fillStyle = lvl === 3 ? '#ffd700' : '#0ff';
-                    ctx.font = 'bold 8px Segoe UI';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('Lv.' + lvl, bx, by - ds - 4);
-                }
-                
                 // Status label
-                ctx.fillStyle = rn.repairing ? '#0f0' : '#888';
+                ctx.fillStyle = bot.repairing ? '#0f0' : '#888';
                 ctx.font = '7px Segoe UI';
                 ctx.textAlign = 'center';
-                ctx.fillText(rn.repairing ? 'REPAIRING' : 'SEEKING', bx, by + ds + 12);
+                ctx.fillText(bot.repairing ? '🔧 REPAIRING' : 'PATROLLING', bx, by + ds + 12);
             }
         };
 
@@ -2685,10 +2699,26 @@
             var distToFactory = Math.sqrt((mx - factoryX) * (mx - factoryX) + (my - factoryY) * (my - factoryY));
             var tooCloseToFactory = distToFactory < 60;
             var inTeamZone = my > this.canvas.height - 80;
+            var tooCloseToEdge = mx < 40 || mx > this.canvas.width - 40 || my < 40 || my > this.canvas.height - 40;
             var canAfford = this.state.currencies.ac >= b.cost;
 
+            // Check max range from nearest building or factory
+            var maxRange = 200;
+            var tooFar = false;
+            if (this.nodes.length > 0) {
+                var closestDist = distToFactory;
+                for (var ci = 0; ci < this.nodes.length; ci++) {
+                    var cdx = mx - this.nodes[ci].x, cdy = my - this.nodes[ci].y;
+                    var cd = Math.sqrt(cdx * cdx + cdy * cdy);
+                    if (cd < closestDist) closestDist = cd;
+                }
+                tooFar = closestDist > maxRange;
+            }
+
+            var blocked = tooCloseToFactory || inTeamZone || tooCloseToEdge || tooFar;
+
             var ringColor, ghostAlpha;
-            if (tooCloseToFactory || inTeamZone) {
+            if (blocked) {
                 ringColor = 'rgba(255, 60, 60, 0.5)';
                 ghostAlpha = 0.2;
             } else if (!canAfford) {
@@ -2717,7 +2747,7 @@
             ctx.globalAlpha = 1.0;
 
             // Connection preview - show where this node would chain to
-            if (!tooCloseToFactory && canAfford) {
+            if (!blocked && canAfford) {
                 var ghostEdges = this.computeConnectionEdges({ x: mx, y: my });
                 ctx.setLineDash([6, 6]);
                 ctx.lineWidth = 1;
@@ -2745,6 +2775,12 @@
             } else if (inTeamZone) {
                 ctx.fillStyle = '#f66';
                 ctx.fillText('Team area!', mx, my + 35);
+            } else if (tooCloseToEdge) {
+                ctx.fillStyle = '#f66';
+                ctx.fillText('Too close to edge!', mx, my + 35);
+            } else if (tooFar) {
+                ctx.fillStyle = '#f66';
+                ctx.fillText('Too far! Stay within range.', mx, my + 35);
             } else if (!canAfford) {
                 ctx.fillStyle = '#f66';
                 ctx.fillText('Need ' + b.cost + ' AC', mx, my + 35);
