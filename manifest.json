@@ -1,6 +1,6 @@
 {
-  "name": "Team Dominos - OKR Delivery Game",
-  "short_name": "Team Dominos",
+  "name": "OKR Factory",
+  "short_name": "OKR Factory",
   "description": "Deliver OKRs to Jrod's HQ in this fast-paced delivery game!",
   "start_url": "./index.html",
   "display": "standalone",

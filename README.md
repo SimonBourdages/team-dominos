@@ -1,4 +1,4 @@
-# Team Dominos - Digital Transformation Journey
+# OKR Factory - Digital Transformation Journey
 
 A complete 15-level game featuring evolving rendering styles that represent the journey from manual work to full automation.
 
