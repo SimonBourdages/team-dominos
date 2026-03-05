@@ -931,7 +931,7 @@
             var curMult = 1;
             var curAc = 0;
             var curOkr = 0;
-            var curEl = 0;
+            var curEl = 10; // Base 10 EL/s from OKR Factory
             var curElDrain = 0;
             var curInterest = 0;
             for (var i = 0; i < this.nodes.length; i++) {
@@ -1312,7 +1312,7 @@
             // Accumulate production from all buildings
             var acGain = 0;
             var okrGain = 0;
-            var elGain = 0;
+            var elGain = 10; // Base 10 EL/s from OKR Factory
             var elDrain = 0;
             var totalInterest = 0;
             for (var i = 0; i < this.nodes.length; i++) {
