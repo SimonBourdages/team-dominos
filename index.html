@@ -647,7 +647,8 @@
             multiplier:  { name: 'Multiplier',  cost: 500,  acPerSec: 0,   okrPerSec: 0,   elCost: 5,  color: '#9c27b0', desc: 'x1.5 all rates', symbol: '✖️', multiplier: 1.5 },
             synthesizer: { name: 'Synthesizer', cost: 2000, acPerSec: 0,   okrPerSec: 100, elCost: 10, color: '#f44336', desc: '+100 OKR/s',     symbol: '⚛️' },
             generator:   { name: 'Generator',   cost: 75,   acPerSec: 0,   okrPerSec: 0,   elPerSec: 5, elCost: 0, color: '#ff9800', desc: '+5 EL/s',           symbol: '⚡' },
-            bank:        { name: 'Bank',         cost: 300,  acPerSec: 0,   okrPerSec: 0,   elCost: 0,   color: '#ffd700', desc: '2% AC interest + carryover', symbol: '🏦', interestRate: 0.02 }
+            bank:        { name: 'Bank',         cost: 300,  acPerSec: 0,   okrPerSec: 0,   elCost: 0,   color: '#ffd700', desc: '2% AC interest + carryover', symbol: '🏦', interestRate: 0.02 },
+            repairbot:   { name: 'Repair Bot',  cost: 200,  acPerSec: 0,   okrPerSec: 0,   elCost: 2,  color: '#00e5ff', desc: 'Heals branch 15 HP/s', symbol: '🔧', repairRate: 15 }
         };
 
         var ACHIEVEMENTS = {
@@ -772,6 +773,8 @@
             this.state = null;
             this.nodes = [];
             this.particles = [];
+            this.ships = [];
+            this.shipSpawnTimer = 0;
             this.floatingTexts = [];
             this.combo = 0;
             this.comboTimer = 0;
@@ -896,7 +899,7 @@
             var container = document.getElementById('buildings');
             container.innerHTML = '';
             var self = this;
-            var types = ['collector', 'processor', 'multiplier', 'synthesizer', 'generator', 'bank'];
+            var types = ['collector', 'processor', 'multiplier', 'synthesizer', 'generator', 'bank', 'repairbot'];
 
             types.forEach(function(type) {
                 var b = BUILDINGS[type];
@@ -1060,6 +1063,7 @@
                     // Normalize nodes for backward compatibility
                     for (var i = 0; i < this.nodes.length; i++) {
                         if (!this.nodes[i].level) this.nodes[i].level = 1;
+                        if (!this.nodes[i].hp) { this.nodes[i].hp = 100; this.nodes[i].maxHp = 100; }
                     }
                     if (this.state.currencies.el === undefined) this.state.currencies.el = 0;
                 } catch (e) {
@@ -1124,8 +1128,15 @@
                 this.state.currencies.el = 0;
             }
 
+            // Guarantee enough AC to place at least one Collector
+            if (this.state.currencies.ac < BUILDINGS.collector.cost) {
+                this.state.currencies.ac = BUILDINGS.collector.cost;
+            }
+
             this.nodes = [];
             this.particles = [];
+            this.ships = [];
+            this.shipSpawnTimer = 0;
             this.floatingTexts = [];
             this.combo = 0;
             this.comboTimer = 0;
@@ -1177,6 +1188,10 @@
             if (level === 5 && !this.tutorialShown['bank']) {
                 this.showHint('Banks earn interest on your AC and carry some over between levels!');
                 this.tutorialShown['bank'] = true;
+            }
+            if (level === 6 && !this.tutorialShown['ships']) {
+                this.showHint('Watch out! Spaceships can damage your buildings. Place Repair Bots (🔧) to heal them!');
+                this.tutorialShown['ships'] = true;
             }
 
             // Start music
@@ -1256,7 +1271,9 @@
                 y: y,
                 age: 0,
                 lastProduce: 0,
-                level: 1
+                level: 1,
+                hp: 100,
+                maxHp: 100
             });
 
             this.addFloatingText(x, y - 20, '-' + b.cost + ' AC', '#ff0');
@@ -1351,11 +1368,15 @@
                 n.lastProduce = (n.lastProduce || 0) + dt;
                 var lvlMult = UPGRADE_POWER[n.level || 1];
                 var btype = BUILDINGS[n.type];
-                if (btype.acPerSec) acGain += btype.acPerSec * lvlMult;
-                if (btype.okrPerSec) okrGain += btype.okrPerSec * lvlMult;
-                if (btype.elPerSec) elGain += btype.elPerSec * lvlMult;
+                // Damaged buildings produce less, disabled buildings produce nothing
+                var hpRatio = (n.hp !== undefined ? n.hp : 100) / (n.maxHp || 100);
+                if (hpRatio <= 0) { if (btype.elCost) elDrain += btype.elCost * lvlMult; continue; }
+                var dmgMult = hpRatio < 1 ? hpRatio : 1;
+                if (btype.acPerSec) acGain += btype.acPerSec * lvlMult * dmgMult;
+                if (btype.okrPerSec) okrGain += btype.okrPerSec * lvlMult * dmgMult;
+                if (btype.elPerSec) elGain += btype.elPerSec * lvlMult * dmgMult;
                 if (btype.elCost) elDrain += btype.elCost * lvlMult;
-                if (btype.interestRate) totalInterest += btype.interestRate * UPGRADE_POWER[n.level || 1];
+                if (btype.interestRate) totalInterest += btype.interestRate * UPGRADE_POWER[n.level || 1] * dmgMult;
             }
 
             acGain *= mult;
@@ -1427,6 +1448,73 @@
                 if (ft.life <= 0) this.floatingTexts.splice(i, 1);
             }
 
+            // Spaceship system
+            var shipW = this.canvas.width;
+            var shipH = this.canvas.height;
+            var targetShipCount = Math.min(20, Math.floor(this.currentAcRate / 5));
+            this.shipSpawnTimer += dt;
+            if (this.ships.length < targetShipCount && this.shipSpawnTimer > 0.5) {
+                this.shipSpawnTimer = 0;
+                this.spawnShip();
+            }
+
+            // Update ships
+            for (var i = this.ships.length - 1; i >= 0; i--) {
+                var ship = this.ships[i];
+                ship.x += ship.vx * dt;
+                ship.y += ship.vy * dt;
+                ship.x += Math.sin(ship.age * 3 + ship.wobble) * 15 * dt;
+                ship.age += dt;
+                ship.trail.push({ x: ship.x, y: ship.y, alpha: 1 });
+                if (ship.trail.length > 8) ship.trail.shift();
+
+                // Remove if off screen
+                if (ship.x < -50 || ship.x > shipW + 50 || ship.y < -50 || ship.y > shipH + 50) {
+                    this.ships.splice(i, 1);
+                    continue;
+                }
+
+                // Check collision with buildings
+                ship.hitTimer = (ship.hitTimer || 0) + dt;
+                if (ship.hitTimer >= 1) {
+                    ship.hitTimer = 0;
+                    for (var j = 0; j < this.nodes.length; j++) {
+                        var nd = this.nodes[j];
+                        var sdx = ship.x - nd.x, sdy = ship.y - nd.y;
+                        if (Math.sqrt(sdx * sdx + sdy * sdy) < 20 && Math.random() < 0.3) {
+                            nd.hp = Math.max(0, (nd.hp !== undefined ? nd.hp : 100) - 10);
+                            this.addFloatingText(nd.x, nd.y - 25, '-10 HP!', '#f44', 12);
+                            this.spawnParticles(nd.x, nd.y, '#f44', 5);
+                        }
+                    }
+                }
+            }
+
+            // Repair bots heal buildings on their MST branch
+            var repairEdges = this.computeConnectionEdges();
+            for (var i = 0; i < this.nodes.length; i++) {
+                var rn = this.nodes[i];
+                if (rn.type !== 'repairbot' || rn.hp <= 0) continue;
+                var repairAmt = BUILDINGS.repairbot.repairRate * UPGRADE_POWER[rn.level || 1] * dt;
+                var branchNodes = [];
+                for (var e = 0; e < repairEdges.length; e++) {
+                    if (repairEdges[e].from.idx === i) branchNodes.push(repairEdges[e].to.idx);
+                    if (repairEdges[e].to.idx === i) branchNodes.push(repairEdges[e].from.idx);
+                }
+                for (var b = 0; b < branchNodes.length; b++) {
+                    var bi = branchNodes[b];
+                    if (bi >= 0 && bi < this.nodes.length) {
+                        var target = this.nodes[bi];
+                        if (target.hp < (target.maxHp || 100)) {
+                            target.hp = Math.min(target.maxHp || 100, target.hp + repairAmt);
+                            if (Math.random() < dt * 2) {
+                                this.addFloatingText(target.x, target.y - 20, '+heal', '#0ff', 9);
+                            }
+                        }
+                    }
+                }
+            }
+
             // Screen shake decay
             if (this.screenShake.intensity > 0) {
                 this.screenShake.intensity *= 0.9;
@@ -1472,6 +1560,19 @@
                     );
                 }
             }
+        };
+
+        OKRFarmingGame.prototype.spawnShip = function() {
+            var w = this.canvas.width;
+            var h = this.canvas.height;
+            var side = Math.floor(Math.random() * 4);
+            var x, y, vx, vy;
+            var speed = 60 + Math.random() * 80;
+            if (side === 0) { x = -20; y = Math.random() * h; vx = speed; vy = (Math.random() - 0.5) * speed * 0.5; }
+            else if (side === 1) { x = w + 20; y = Math.random() * h; vx = -speed; vy = (Math.random() - 0.5) * speed * 0.5; }
+            else if (side === 2) { x = Math.random() * w; y = -20; vx = (Math.random() - 0.5) * speed * 0.5; vy = speed; }
+            else { x = Math.random() * w; y = h + 20; vx = (Math.random() - 0.5) * speed * 0.5; vy = -speed; }
+            this.ships.push({ x: x, y: y, vx: vx, vy: vy, age: 0, wobble: Math.random() * 10, trail: [], hitTimer: 0 });
         };
 
         // =========================================================
@@ -1629,6 +1730,7 @@
 
             // Effects
             this.drawParticles(ctx);
+            this.drawShips(ctx);
             this.drawPixelSpectators(ctx, w, h);
             this.drawComboDisplay(ctx, w, h);
             this.drawFloatingTexts(ctx);
@@ -1679,6 +1781,11 @@
                 lines.push({ text: 'Interest: ' + (nodeInterest * 100).toFixed(1) + '% AC/s', color: '#ffd700' });
                 lines.push({ text: 'Carryover: 10% AC on level up', color: '#ffd700' });
             }
+            var nodeRepair = bt.repairRate ? bt.repairRate * lvlMult : 0;
+            if (nodeRepair > 0) lines.push({ text: 'Repairs: ' + nodeRepair.toFixed(1) + ' HP/s (branch)', color: '#0ff' });
+            var hpVal = node.hp !== undefined ? node.hp : 100;
+            var maxHpVal = node.maxHp || 100;
+            lines.push({ text: 'HP: ' + Math.floor(hpVal) + '/' + maxHpVal, color: hpVal >= maxHpVal ? '#4caf50' : hpVal > 30 ? '#ff9800' : '#f44336' });
 
             lines.push({ text: '', color: '' }); // spacer
 
@@ -1759,6 +1866,45 @@
                 ctx.fillText(ln.text, boxX + padding, boxY + padding + i * lineH + 10);
             }
             ctx.restore();
+        };
+
+        // =========================================================
+        // DRAWING - SPACESHIPS
+        // =========================================================
+
+        OKRFarmingGame.prototype.drawShips = function(ctx) {
+            for (var i = 0; i < this.ships.length; i++) {
+                var ship = this.ships[i];
+                var angle = Math.atan2(ship.vy, ship.vx);
+
+                // Engine trail
+                for (var t = 0; t < ship.trail.length; t++) {
+                    var tp = ship.trail[t];
+                    var ta = (t / ship.trail.length) * 0.4;
+                    ctx.fillStyle = 'rgba(255, 100, 50, ' + ta.toFixed(2) + ')';
+                    var ts = 2 - (t / ship.trail.length);
+                    ctx.fillRect(Math.floor(tp.x) - ts/2, Math.floor(tp.y) - ts/2, ts, ts);
+                }
+
+                // Ship body (small triangle)
+                ctx.save();
+                ctx.translate(ship.x, ship.y);
+                ctx.rotate(angle);
+                ctx.fillStyle = '#ddd';
+                ctx.beginPath();
+                ctx.moveTo(8, 0);
+                ctx.lineTo(-5, -4);
+                ctx.lineTo(-5, 4);
+                ctx.closePath();
+                ctx.fill();
+                // Cockpit
+                ctx.fillStyle = '#0ff';
+                ctx.fillRect(2, -1, 3, 2);
+                // Engine glow
+                ctx.fillStyle = 'rgba(255, 150, 50, 0.8)';
+                ctx.fillRect(-7, -2, 3, 4);
+                ctx.restore();
+            }
         };
 
         // =========================================================
@@ -2773,6 +2919,131 @@
                         ctx.fillText('$$$', x, y - 10 * s);
                     }
                     break;
+
+                case 'repairbot':
+                    if (lvl === 1) {
+                        // Lv.1 — Small cyan robot body, wrench arm, single antenna
+                        // Body
+                        this._pxRect(ctx, x - 3 * s, y - 3 * s, 6 * s, 5 * s, '#006064');
+                        this._pxRect(ctx, x - 2 * s, y - 2 * s, 4 * s, 3 * s, '#00acc1');
+                        // Head
+                        this._pxRect(ctx, x - 2 * s, y - 5 * s, 4 * s, 2 * s, '#00bcd4');
+                        // Eyes
+                        this._pxRect(ctx, x - 1 * s, y - 4.5 * s, s * 0.8, s * 0.8, '#fff');
+                        this._pxRect(ctx, x + 0.5 * s, y - 4.5 * s, s * 0.8, s * 0.8, '#fff');
+                        // Antenna
+                        this._pxRect(ctx, x, y - 6 * s, s * 0.5, 1.5 * s, '#00e5ff');
+                        this._pxRect(ctx, x - s * 0.3, y - 6.5 * s, s, s, '#0ff');
+                        // Wrench arm
+                        this._pxRect(ctx, x + 3 * s, y - 2 * s, 2 * s, s * 0.6, '#90a4ae');
+                        this._pxRect(ctx, x + 4.5 * s, y - 2.8 * s, s * 0.8, s * 2, '#78909c');
+                        // Legs
+                        this._pxRect(ctx, x - 2 * s, y + 2 * s, s, 2 * s, '#006064');
+                        this._pxRect(ctx, x + 1 * s, y + 2 * s, s, 2 * s, '#006064');
+                        // Repair spark
+                        if (Math.random() < 0.08) {
+                            ctx.fillStyle = '#0ff';
+                            ctx.fillRect(x + 5 * s + (Math.random() - 0.5) * 2 * s, y - 3 * s + (Math.random() - 0.5) * 2 * s, s * 0.6, s * 0.6);
+                        }
+                    } else if (lvl === 2) {
+                        // Lv.2 — Larger, two arms with tools, radar dish
+                        // Glow
+                        ctx.save();
+                        ctx.fillStyle = 'rgba(0,229,255,0.08)';
+                        ctx.beginPath();
+                        ctx.arc(x, y, 6 * s, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                        // Body
+                        this._pxRect(ctx, x - 4 * s, y - 3 * s, 8 * s, 6 * s, '#006064');
+                        this._pxRect(ctx, x - 3 * s, y - 2 * s, 6 * s, 4 * s, '#00acc1');
+                        // Chest panel
+                        this._pxRect(ctx, x - 1 * s, y - 1 * s, 2 * s, 2 * s, '#00e5ff');
+                        // Head
+                        this._pxRect(ctx, x - 2.5 * s, y - 6 * s, 5 * s, 3 * s, '#00bcd4');
+                        this._pxRect(ctx, x - 1.5 * s, y - 5 * s, 3 * s, 1.5 * s, '#00e5ff');
+                        // Eyes
+                        this._pxRect(ctx, x - 1 * s, y - 5.5 * s, s * 0.8, s * 0.8, '#fff');
+                        this._pxRect(ctx, x + 0.5 * s, y - 5.5 * s, s * 0.8, s * 0.8, '#fff');
+                        // Radar dish
+                        this._pxRect(ctx, x - 1 * s, y - 8 * s, 2 * s, s * 0.5, '#0ff');
+                        this._pxRect(ctx, x - 0.3 * s, y - 7.5 * s, s * 0.6, 1.5 * s, '#00acc1');
+                        // Left arm - wrench
+                        this._pxRect(ctx, x - 5 * s, y - 2 * s, 1.5 * s, s * 0.6, '#90a4ae');
+                        this._pxRect(ctx, x - 6 * s, y - 3 * s, s, s * 2.5, '#78909c');
+                        // Right arm - welder
+                        this._pxRect(ctx, x + 4 * s, y - 2 * s, 1.5 * s, s * 0.6, '#90a4ae');
+                        this._pxRect(ctx, x + 5 * s, y - 3 * s, s * 0.6, s * 2, '#ff9800');
+                        // Legs
+                        this._pxRect(ctx, x - 2.5 * s, y + 3 * s, 1.5 * s, 2 * s, '#006064');
+                        this._pxRect(ctx, x + 1 * s, y + 3 * s, 1.5 * s, 2 * s, '#006064');
+                        // Repair beam effect
+                        if (Math.random() < 0.12) {
+                            ctx.strokeStyle = 'rgba(0,229,255,0.5)';
+                            ctx.lineWidth = 1;
+                            ctx.beginPath();
+                            ctx.moveTo(x + 5.5 * s, y - 2 * s);
+                            ctx.lineTo(x + 5.5 * s + (Math.random() - 0.5) * 4 * s, y - 2 * s + Math.random() * 4 * s);
+                            ctx.stroke();
+                        }
+                    } else {
+                        // Lv.3 — Big mech with multiple tool arms, golden wrench, pulsing heal aura
+                        // Pulsing heal aura
+                        ctx.save();
+                        ctx.fillStyle = 'rgba(0,229,255,' + (0.06 + Math.sin(age * 3) * 0.04).toFixed(3) + ')';
+                        ctx.beginPath();
+                        ctx.arc(x, y, 9 * s, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                        // Energy ring
+                        ctx.save();
+                        ctx.strokeStyle = 'rgba(0,229,255,0.3)';
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 7 * s, age * 2, age * 2 + Math.PI * 1.2);
+                        ctx.stroke();
+                        ctx.restore();
+                        // Body
+                        this._pxRect(ctx, x - 5 * s, y - 4 * s, 10 * s, 8 * s, '#004d40');
+                        this._pxRect(ctx, x - 4 * s, y - 3 * s, 8 * s, 6 * s, '#00796b');
+                        this._pxRect(ctx, x - 3 * s, y - 2 * s, 6 * s, 4 * s, '#00acc1');
+                        // Chest core
+                        var corePulse = Math.sin(age * 4) * 0.3 + 0.7;
+                        ctx.fillStyle = 'rgba(0,229,255,' + corePulse.toFixed(2) + ')';
+                        ctx.fillRect(x - 1.5 * s, y - 1.5 * s, 3 * s, 3 * s);
+                        // Head
+                        this._pxRect(ctx, x - 3 * s, y - 7 * s, 6 * s, 3 * s, '#00838f');
+                        this._pxRect(ctx, x - 2 * s, y - 6 * s, 4 * s, 2 * s, '#00bcd4');
+                        // Eyes (glowing)
+                        ctx.fillStyle = 'rgba(255,215,0,' + corePulse.toFixed(2) + ')';
+                        ctx.fillRect(x - 1.5 * s, y - 6 * s, s, s);
+                        ctx.fillRect(x + 0.5 * s, y - 6 * s, s, s);
+                        // Golden antenna
+                        this._pxRect(ctx, x - 0.3 * s, y - 9 * s, s * 0.6, 2 * s, '#ffd700');
+                        this._pxRect(ctx, x - s, y - 9.5 * s, 2 * s, s, '#ffd700');
+                        // Multiple tool arms
+                        this._pxRect(ctx, x - 6 * s, y - 3 * s, 1.5 * s, s * 0.8, '#90a4ae');
+                        this._pxRect(ctx, x - 7.5 * s, y - 4 * s, s * 1.2, s * 3, '#ffd700');
+                        this._pxRect(ctx, x + 5 * s, y - 3 * s, 1.5 * s, s * 0.8, '#90a4ae');
+                        this._pxRect(ctx, x + 6.5 * s, y - 4 * s, s * 1.2, s * 3, '#ff9800');
+                        this._pxRect(ctx, x - 6 * s, y + 1 * s, 1.5 * s, s * 0.6, '#78909c');
+                        this._pxRect(ctx, x + 5 * s, y + 1 * s, 1.5 * s, s * 0.6, '#78909c');
+                        // Legs
+                        this._pxRect(ctx, x - 3 * s, y + 4 * s, 2 * s, 3 * s, '#004d40');
+                        this._pxRect(ctx, x + 1 * s, y + 4 * s, 2 * s, 3 * s, '#004d40');
+                        this._pxRect(ctx, x - 4 * s, y + 6.5 * s, 3 * s, s, '#006064');
+                        this._pxRect(ctx, x + 1 * s, y + 6.5 * s, 3 * s, s, '#006064');
+                        // Orbiting repair drones
+                        for (var di = 0; di < 3; di++) {
+                            var droneA = age * 2.5 + di * (Math.PI * 2 / 3);
+                            var droneR = 7 * s;
+                            var drX = x + Math.cos(droneA) * droneR;
+                            var drY = y + Math.sin(droneA) * droneR;
+                            this._pxRect(ctx, drX - s * 0.5, drY - s * 0.5, s, s, '#0ff');
+                            this._pxRect(ctx, drX - s * 0.2, drY - s * 0.8, s * 0.4, s * 0.3, '#00e5ff');
+                        }
+                    }
+                    break;
             }
 
             // === Common upgrade indicators (after building switch) ===
@@ -2835,6 +3106,47 @@
             ctx.textAlign = 'center';
             var label = BUILDINGS[node.type].name + (lvl > 1 ? ' Lv.' + lvl : '');
             ctx.fillText(label, x, y + 7 * s);
+
+            // HP bar
+            var hp = node.hp !== undefined ? node.hp : 100;
+            var maxHp = node.maxHp || 100;
+            if (hp < maxHp) {
+                var barW = 30;
+                var barH = 4;
+                var barX = x - barW / 2;
+                var barY = y - (7 + lvl) * s - 8;
+                var hpPct = hp / maxHp;
+                // Background
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+                // HP fill
+                ctx.fillStyle = hpPct > 0.6 ? '#4caf50' : hpPct > 0.3 ? '#ff9800' : '#f44336';
+                ctx.fillRect(barX, barY, barW * hpPct, barH);
+                // Border
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 0.5;
+                ctx.strokeRect(barX, barY, barW, barH);
+            }
+
+            // Disabled overlay
+            if (hp <= 0) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+                ctx.fillRect(x - 6 * s, y - 6 * s, 12 * s, 12 * s);
+                ctx.fillStyle = '#f44';
+                ctx.font = 'bold 12px Segoe UI';
+                ctx.textAlign = 'center';
+                ctx.fillText('DISABLED', x, y + 4);
+            }
+
+            // Damage sparks
+            if (hp < maxHp && hp > 0) {
+                if (Math.random() < 0.05) {
+                    var sparkX = x + (Math.random() - 0.5) * 6 * s;
+                    var sparkY = y + (Math.random() - 0.5) * 6 * s;
+                    ctx.fillStyle = '#ff0';
+                    ctx.fillRect(sparkX, sparkY, 2, 2);
+                }
+            }
         };
 
         // =========================================================
