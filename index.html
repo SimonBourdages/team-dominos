@@ -546,6 +546,26 @@
                 
                 this.levelConfigs = this.initLevelConfigs();
                 this.currentLevelData = null;
+
+                // Phase 3 galaxy backgrounds (distinct visual variant per level)
+                this.phase3Background = new Image();
+                this.phase3BackgroundLoaded = false;
+                this.phase3Background.src = './phase3-galaxy.jpg';
+                this.phase3Background.onload = () => { this.phase3BackgroundLoaded = true; };
+                this.phase3BackgroundFilters = {
+                    11: 'brightness(0.25) saturate(1.2) hue-rotate(0deg)',
+                    12: 'brightness(0.24) saturate(1.35) hue-rotate(30deg)',
+                    13: 'brightness(0.23) saturate(1.45) hue-rotate(75deg)',
+                    14: 'brightness(0.22) saturate(1.55) hue-rotate(150deg)',
+                    15: 'brightness(0.21) saturate(1.70) hue-rotate(220deg)'
+                };
+                this.phase3BackgroundOverlays = {
+                    11: 'rgba(0, 20, 40, 0.35)',
+                    12: 'rgba(15, 0, 45, 0.35)',
+                    13: 'rgba(0, 35, 25, 0.35)',
+                    14: 'rgba(35, 15, 0, 0.35)',
+                    15: 'rgba(25, 0, 0, 0.45)'
+                };
                 
                 // Three.js objects
                 this.scene = null;
@@ -3149,6 +3169,47 @@
                 this.updateUI();
                 this.renderPhase3(productionRate, acRegenRate, globalMult);
             }
+
+            drawPhase3Background() {
+                const ctx = this.ctx;
+                const canvas = this.canvas;
+                if (!this.phase3BackgroundLoaded) {
+                    ctx.fillStyle = '#0a0a0a';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    return;
+                }
+
+                const level = this.state.currentLevel;
+                const filter = this.phase3BackgroundFilters[level] || this.phase3BackgroundFilters[11];
+                const overlay = this.phase3BackgroundOverlays[level] || 'rgba(0, 0, 0, 0.35)';
+                const img = this.phase3Background;
+                const imgAspect = img.width / img.height;
+                const canvasAspect = canvas.width / canvas.height;
+
+                let drawW, drawH, drawX, drawY;
+                if (imgAspect > canvasAspect) {
+                    drawH = canvas.height;
+                    drawW = drawH * imgAspect;
+                    drawX = (canvas.width - drawW) / 2;
+                    drawY = 0;
+                } else {
+                    drawW = canvas.width;
+                    drawH = drawW / imgAspect;
+                    drawX = 0;
+                    drawY = (canvas.height - drawH) / 2;
+                }
+
+                const prevSmoothing = ctx.imageSmoothingEnabled;
+                ctx.imageSmoothingEnabled = true;
+                ctx.save();
+                ctx.filter = filter;
+                ctx.drawImage(img, drawX, drawY, drawW, drawH);
+                ctx.restore();
+                ctx.imageSmoothingEnabled = prevSmoothing;
+
+                ctx.fillStyle = overlay;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
             
             renderPhase3(rate, acRate, mult) {
                 const ctx = this.ctx;
@@ -3168,9 +3229,8 @@
                 ctx.save();
                 ctx.translate(shakeX, shakeY);
                 
-                // Dark pixel background
-                ctx.fillStyle = '#0a0a0a';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                // Galaxy background (per-level visual variant)
+                this.drawPhase3Background();
                 
                 // Pixel grid (every 3 pixels)
                 const pixelScale = 3;
